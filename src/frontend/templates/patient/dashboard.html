@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% import "_icons.html" as icons %}
+{% block title %}My AgentCare{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="/static/css/app.css" />{% endblock %}
+
+{% block body %}
+<nav class="topnav">
+  <a href="/info" class="topnav__brand"><img src="/static/img/logo.png" alt="" class="brand-logo" /> AgentCare</a>
+  <div class="row">
+    <span class="role-toast">{{ icons.user("icon-sm") }} {{ user.name }} · Patient</span>
+    <button class="btn btn-secondary btn-sm" onclick="AgentCareAPI.logout()">{{ icons.logout("icon-sm") }} Log out</button>
+  </div>
+</nav>
+
+<div class="app-shell">
+  <aside class="app-sidebar">
+    <div class="sidebar-title">Workspace</div>
+    <button class="tab-btn active" data-tab="request"><span class="tab-icon">{{ icons.compass() }}</span> New request</button>
+    <button class="tab-btn" data-tab="appointments"><span class="tab-icon">{{ icons.calendar() }}</span> Appointments</button>
+    <button class="tab-btn" data-tab="documents"><span class="tab-icon">{{ icons.file_text() }}</span> Documents</button>
+    <button class="tab-btn" data-tab="reminders"><span class="tab-icon">{{ icons.bell() }}</span> Reminders</button>
+  </aside>
+
+  <main class="app-main">
+    <section id="tab-request" class="tab-panel active">
+      <h1 class="page-title">Submit an administrative request</h1>
+      <p class="page-subtitle">Describe what you need in plain language — AgentCare's agents will route it, book appointments, and coordinate documents.</p>
+
+      <div class="card composer">
+        <form id="request-form">
+          <div class="field">
+            <label for="request-text">Your request</label>
+            <textarea id="request-text" placeholder="e.g. I need a cardiology appointment next week. I also want to attach my previous ECG and blood reports." required></textarea>
+          </div>
+          <button type="submit" class="btn btn-primary" id="request-submit-btn">Submit request</button>
+        </form>
+      </div>
+
+      <div id="workflow-status" class="card hidden">
+        <div class="row between">
+          <div>
+            <div class="card-title">Workflow progress</div>
+            <div class="card-subtitle" id="workflow-meta">—</div>
+          </div>
+          <span class="badge badge-info" id="workflow-status-badge">in progress</span>
+        </div>
+        <div class="pipeline-trace" id="workflow-trace"></div>
+      </div>
+    </section>
+
+    <section id="tab-appointments" class="tab-panel">
+      <h1 class="page-title">Appointments</h1>
+      <p class="page-subtitle">Appointments booked through your requests.</p>
+      <div class="card">
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead><tr><th>Status</th><th>Doctor / Slot</th><th>Reason</th><th>Updated</th><th></th></tr></thead>
+            <tbody id="appointments-body"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-documents" class="tab-panel">
+      <h1 class="page-title">Documents</h1>
+      <p class="page-subtitle">Upload medical documents for your requests. Duplicates are detected automatically.</p>
+      <div class="card">
+        <div class="dropzone" id="dropzone">
+          <div class="dropzone-icon">{{ icons.upload_cloud() }}</div>
+          <div>Drag &amp; drop a file here, or click to choose</div>
+          <input type="file" id="file-input" class="hidden" />
+        </div>
+      </div>
+      <div class="card">
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead><tr><th>Type</th><th>Status</th><th>Uploaded</th></tr></thead>
+            <tbody id="documents-body"><tr><td colspan="3" class="muted">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-reminders" class="tab-panel">
+      <h1 class="page-title">Reminders</h1>
+      <p class="page-subtitle">Upcoming reminders created by the Follow-up Agent.</p>
+      <div class="card">
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead><tr><th>Type</th><th>Scheduled</th><th>Status</th></tr></thead>
+            <tbody id="reminders-body"><tr><td colspan="3" class="muted">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="/static/js/dashboard.js"></script>
+<script src="/static/js/request_flow.js"></script>
+<script src="/static/js/documents.js"></script>
+{% endblock %}

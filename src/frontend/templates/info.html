@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% import "_icons.html" as icons %}
+{% block title %}AgentCare — Agentic AI for Patient Administration{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="/static/css/info.css" />{% endblock %}
+
+{% block body %}
+<nav class="topnav">
+  <a href="/info" class="topnav__brand"><img src="/static/img/logo.png" alt="" class="brand-logo" /> AgentCare</a>
+  <div class="topnav__links">
+    <a href="/info" class="active">Overview</a>
+    <a href="#pipeline">How it works</a>
+    <a href="#agents">Agent architecture</a>
+    <a href="#roles">Roles</a>
+  </div>
+  <div class="row">
+    <a href="/login" class="btn btn-secondary btn-sm">Log in</a>
+    <a href="/register" class="btn btn-primary btn-sm">Get started</a>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="container">
+    <span class="hero-badge">Non-clinical · Human-supervised · LangGraph-orchestrated</span>
+    <h1>The agentic backbone for patient administration and care coordination.</h1>
+    <p class="lead">
+      AgentCare plans, routes, and executes a patient's non-clinical journey —
+      registration, department routing, appointment booking, document
+      coordination, reminders, and follow-up — with every decision persisted,
+      audited, and escalated to a human when it matters.
+    </p>
+    <div class="hero-cta">
+      <a href="/register" class="btn btn-primary">Start a patient request</a>
+      <a href="#pipeline" class="btn btn-secondary">See how it works</a>
+    </div>
+    <div class="hero-stats">
+      <div class="hero-stat"><div class="num">6</div><div class="label">Specialist agents</div></div>
+      <div class="hero-stat"><div class="num">100%</div><div class="label">Actions audited</div></div>
+      <div class="hero-stat"><div class="num">0</div><div class="label">Autonomous diagnoses</div></div>
+      <div class="hero-stat"><div class="num">24/7</div><div class="label">Escalation coverage</div></div>
+    </div>
+  </div>
+</header>
+
+<section id="pipeline">
+  <div class="container">
+    <div class="section-head">
+      <span class="eyebrow">Core workflow</span>
+      <h2>One request, a fully coordinated administrative journey.</h2>
+    </div>
+    <div class="pipeline">
+      <div class="pipeline-step"><h4>Registration</h4><p>Identify or create the patient record.</p></div>
+      <div class="pipeline-step"><h4>Intent detection</h4><p>Understand what the patient is asking for.</p></div>
+      <div class="pipeline-step"><h4>Department routing</h4><p>Map the request to the right department.</p></div>
+      <div class="pipeline-step"><h4>Appointment booking</h4><p>Check availability, book, reschedule, or cancel.</p></div>
+      <div class="pipeline-step"><h4>Document coordination</h4><p>Classify uploads, flag missing or duplicate files.</p></div>
+      <div class="pipeline-step"><h4>Confirmation &amp; follow-up</h4><p>Persist state, remind, and schedule follow-up.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="agents" class="section-alt">
+  <div class="container">
+    <div class="section-head">
+      <span class="eyebrow">Agent architecture</span>
+      <h2>Six distinct agents, each with its own prompt, tools, and job.</h2>
+    </div>
+    <div class="grid-3">
+      <div class="feature-card">
+        <div class="feature-icon">{{ icons.compass("icon") }}</div>
+        <h3>Coordinator Agent</h3>
+        <p>Understands the goal, decides which specialist agents to run, and merges their outputs into one confirmation.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">{{ icons.shield("icon") }}</div>
+        <h3>Safety &amp; Escalation Agent</h3>
+        <p>Blocks diagnosis/prescription requests and emergencies in code, and creates human-review escalations.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">{{ icons.route("icon") }}</div>
+        <h3>Department Routing Agent</h3>
+        <p>Classifies the request and maps it to a real, active hospital department — never a hallucinated one.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">{{ icons.calendar("icon") }}</div>
+        <h3>Appointment Agent</h3>
+        <p>Checks live slot availability and conflicts, then books, reschedules, or cancels against persisted data.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">{{ icons.file_text("icon") }}</div>
+        <h3>Document Agent</h3>
+        <p>Classifies uploads, detects duplicates by checksum, and flags missing documents per department.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">{{ icons.bell("icon") }}</div>
+        <h3>Follow-up Agent</h3>
+        <p>Creates appointment and document reminders, and hands off to the notification dispatcher.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="roles">
+  <div class="container">
+    <div class="section-head">
+      <span class="eyebrow">Built for both sides</span>
+      <h2>One system, two experiences.</h2>
+    </div>
+    <div class="role-cards">
+      <div class="role-card patient">
+        <h3>For patients</h3>
+        <p>Submit a request in plain language and watch it move through the workflow in real time.</p>
+        <ul>
+          <li>Create and update your profile</li>
+          <li>Book, reschedule, or cancel appointments</li>
+          <li>Upload and track documents</li>
+          <li>See reminders and follow-up tasks</li>
+        </ul>
+        <a href="/register" class="btn btn-secondary">Create a patient account</a>
+      </div>
+      <div class="role-card staff">
+        <h3>For hospital staff</h3>
+        <p>Oversee every request, approve escalations, and manage departments, doctors, and slots.</p>
+        <ul>
+          <li>Review incoming administrative requests</li>
+          <li>Approve or reject escalated cases</li>
+          <li>Manage departments, doctors, and slots</li>
+          <li>Full audit history, every action traced</li>
+        </ul>
+        <a href="/register" class="btn btn-secondary">Sign in as staff</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="container">
+    <div class="safety-banner">
+      <div class="safety-banner__icon">{{ icons.alert_triangle("icon icon-lg") }}</div>
+      <div>
+        <strong>AgentCare is an administrative coordination system, not a clinical one.</strong>
+        <p class="safety-banner__text">
+          It never diagnoses conditions, prescribes medication, or recommends dosages.
+          Emergencies and clinical questions are always escalated to a human. This
+          boundary is enforced in the Safety &amp; Escalation Agent's code, not just its prompt.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer class="site-footer">
+  <div class="container">AgentCare — synthetic demo data only. Not a substitute for professional medical care.</div>
+</footer>
+{% endblock %}

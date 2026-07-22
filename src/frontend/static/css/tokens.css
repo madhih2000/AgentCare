@@ -1,0 +1,135 @@
+/*
+  AgentCare design tokens.
+  Palette: cyan/teal primary + emerald accent (healthcare-tech, calm/trustworthy),
+  Untitled-UI-style cool neutrals for data-dense surfaces. Typography: Lexend
+  (headings — designed for reading-fluency/accessibility) + Inter (body/UI).
+  Spacing: 8px grid, with a 4px half-step for hairline gaps only.
+*/
+:root {
+  /* ---- Brand: cyan/teal ---- */
+  --color-primary-50: #ecfeff;
+  --color-primary-100: #cffafe;
+  --color-primary-200: #a5f3fc;
+  --color-primary-300: #67e8f9;
+  --color-primary-400: #22d3ee;
+  --color-primary-500: #06b6d4;
+  --color-primary-600: #0891b2;
+  --color-primary-700: #0e7490; /* AA-safe for white text/buttons */
+  --color-primary-800: #155e75;
+  --color-primary-900: #164e63;
+
+  /* ---- Accent: emerald (positive / confirmed / health) ---- */
+  --color-accent-500: #10b981;
+  --color-accent-600: #059669;
+  --color-accent-100: #d1fae5;
+
+  /* ---- Semantic ---- */
+  --color-success-600: #059669;
+  --color-success-100: #d1fae5;
+  --color-warning-600: #d97706;
+  --color-warning-100: #fef3c7;
+  --color-danger-600: #dc2626;
+  --color-danger-100: #fee2e2;
+  --color-info-600: #0e7490;
+  --color-info-100: #cffafe;
+
+  /* ---- Neutrals (cool slate, pairs with cyan brand) ---- */
+  --color-bg: #f7fafb;
+  --color-surface: #ffffff;
+  --color-surface-alt: #f1f5f7;
+  --color-surface-sunken: #eef2f4;
+  --color-border: #e1e7eb;
+  --color-border-strong: #cbd5db;
+  --color-text: #101828;
+  --color-text-muted: #475467;
+  --color-text-faint: #98a2b3;
+  --color-text-on-brand: #ffffff;
+
+  /* ---- Spacing: 8px grid ---- */
+  --space-0-5: 4px;  /* hairline exception — icon/text micro-gaps only */
+  --space-1: 8px;
+  --space-2: 16px;
+  --space-3: 24px;
+  --space-4: 32px;
+  --space-5: 40px;
+  --space-6: 48px;
+  --space-7: 64px;
+  --space-8: 80px;
+  --space-9: 96px;
+  --space-10: 128px;
+
+  /* ---- Radius ---- */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-pill: 999px;
+
+  /* ---- Type ---- */
+  --font-display: "Lexend", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --text-xs: 0.75rem;    /* 12px */
+  --text-sm: 0.8125rem;  /* 13px */
+  --text-base: 0.9375rem;/* 15px — dense-dashboard body size */
+  --text-md: 1rem;       /* 16px */
+  --text-lg: 1.125rem;   /* 18px */
+  --text-xl: 1.375rem;   /* 22px */
+  --text-2xl: 1.75rem;   /* 28px */
+  --text-3xl: 2.25rem;   /* 36px */
+  --text-4xl: 3rem;      /* 48px */
+  --text-5xl: 3.75rem;   /* 60px */
+
+  --leading-tight: 1.2;
+  --leading-snug: 1.4;
+  --leading-normal: 1.6;
+
+  --tracking-tight: -0.02em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.04em;
+
+  /* ---- Elevation (two-layer: tight contact shadow + soft ambient) ---- */
+  --shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --shadow-sm: 0 1px 3px rgba(16, 24, 40, 0.08), 0 1px 2px rgba(16, 24, 40, 0.04);
+  --shadow-md: 0 4px 8px rgba(16, 24, 40, 0.04), 0 8px 20px rgba(16, 24, 40, 0.08);
+  --shadow-lg: 0 8px 16px rgba(16, 24, 40, 0.06), 0 20px 40px rgba(16, 24, 40, 0.12);
+  --shadow-focus: 0 0 0 3px var(--color-primary-100);
+
+  /* ---- Motion ---- */
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out-back: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --duration-fast: 150ms;
+  --duration-base: 220ms;
+  --duration-slow: 400ms;
+  --transition-fast: var(--duration-fast) var(--ease-standard);
+  --transition-base: var(--duration-base) var(--ease-standard);
+}
+
+[data-theme="dark"] {
+  --color-bg: #0b1220;
+  --color-surface: #121a2b;
+  --color-surface-alt: #182437;
+  --color-surface-sunken: #0e1728;
+  --color-border: #263349;
+  --color-border-strong: #34435d;
+  --color-text: #eef2f6;
+  --color-text-muted: #a3aec2;
+  --color-text-faint: #6c7891;
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.3), 0 8px 20px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.35), 0 20px 40px rgba(0, 0, 0, 0.4);
+  --shadow-focus: 0 0 0 3px rgba(6, 182, 212, 0.28);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

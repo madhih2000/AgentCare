@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Log in — AgentCare{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="/static/css/app.css" />{% endblock %}
+
+{% block body %}
+<div class="auth-shell">
+  <div class="auth-card card">
+    <a href="/info" class="brand"><img src="/static/img/logo.png" alt="" class="brand-logo" /> AgentCare</a>
+    <h2>Welcome back</h2>
+    <p class="text-sm">Log in to continue your administrative journey.</p>
+
+    <div id="form-error" class="form-error"></div>
+
+    <form id="login-form" class="stack">
+      <div class="field">
+        <label for="email">Email</label>
+        <input type="email" id="email" required autocomplete="email" />
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input type="password" id="password" required autocomplete="current-password" />
+      </div>
+      <button type="submit" class="btn btn-primary btn-block">Log in</button>
+    </form>
+
+    <div class="auth-switch">
+      Don't have an account? <a href="/register">Create one</a>
+    </div>
+    <div class="auth-demo">
+      Demo accounts: <code>patient@agentcare.demo / Patient123!</code> &middot; <code>staff@agentcare.demo / Staff123!</code>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById("login-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const errorBox = document.getElementById("form-error");
+  errorBox.classList.remove("visible");
+  try {
+    await AgentCareAPI.post("/api/auth/login", {
+      email: document.getElementById("email").value,
+      password: document.getElementById("password").value,
+    });
+    window.location.href = "/";
+  } catch (err) {
+    errorBox.textContent = err.message || "Login failed";
+    errorBox.classList.add("visible");
+  }
+});
+</script>
+{% endblock %}

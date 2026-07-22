@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% import "_icons.html" as icons %}
+{% block title %}Staff Console — AgentCare{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="/static/css/app.css" />{% endblock %}
+
+{% block body %}
+<nav class="topnav">
+  <a href="/info" class="topnav__brand"><img src="/static/img/logo.png" alt="" class="brand-logo" /> AgentCare</a>
+  <div class="row">
+    <span class="role-toast">{{ icons.shield("icon-sm") }} {{ user.name }} · {{ user.role.value|capitalize }}</span>
+    <button class="btn btn-secondary btn-sm" onclick="AgentCareAPI.logout()">{{ icons.logout("icon-sm") }} Log out</button>
+  </div>
+</nav>
+
+<div class="app-shell">
+  <aside class="app-sidebar">
+    <div class="sidebar-title">Staff console</div>
+    <button class="tab-btn active" data-tab="requests"><span class="tab-icon">{{ icons.clipboard() }}</span> Requests</button>
+    <button class="tab-btn" data-tab="escalations"><span class="tab-icon">{{ icons.alert_triangle() }}</span> Escalations</button>
+    <button class="tab-btn" data-tab="manage"><span class="tab-icon">{{ icons.building() }}</span> Departments &amp; slots</button>
+    <button class="tab-btn" data-tab="audit"><span class="tab-icon">{{ icons.history() }}</span> Audit log</button>
+  </aside>
+
+  <main class="app-main">
+    <section id="tab-requests" class="tab-panel active">
+      <h1 class="page-title">Patient requests</h1>
+      <p class="page-subtitle">Every workflow run, with its current agent step and status.</p>
+      <div class="card">
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead><tr><th>Patient</th><th>Step</th><th>Status</th><th>Updated</th></tr></thead>
+            <tbody id="workflows-body"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-escalations" class="tab-panel">
+      <h1 class="page-title">Escalations</h1>
+      <p class="page-subtitle">Cases the Safety &amp; Escalation Agent flagged for human review. Only staff/admin can resolve these.</p>
+      <div class="card">
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead><tr><th>Reason</th><th>Workflow</th><th>Created</th><th></th></tr></thead>
+            <tbody id="escalations-body"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-manage" class="tab-panel">
+      <h1 class="page-title">Departments, doctors &amp; slots</h1>
+      <p class="page-subtitle">Add doctors and open appointment slots for existing departments.</p>
+      <div class="card">
+        <h3 class="card-title">Add a doctor</h3>
+        <form id="doctor-form" class="row">
+          <select id="doctor-department" class="manage-field"></select>
+          <input type="text" id="doctor-name" placeholder="Doctor name" class="manage-field" required />
+          <button type="submit" class="btn btn-primary btn-sm">Add</button>
+        </form>
+      </div>
+      <div class="card">
+        <h3 class="card-title">Add an appointment slot</h3>
+        <form id="slot-form" class="row">
+          <select id="slot-doctor" class="manage-field"></select>
+          <input type="datetime-local" id="slot-start" required />
+          <input type="datetime-local" id="slot-end" required />
+          <button type="submit" class="btn btn-primary btn-sm">Add</button>
+        </form>
+      </div>
+    </section>
+
+    <section id="tab-audit" class="tab-panel">
+      <h1 class="page-title">Audit log</h1>
+      <p class="page-subtitle">Every mutating action across the system, most recent first.</p>
+      <div class="card">
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead><tr><th>Action</th><th>Entity</th><th>Actor</th><th>When</th></tr></thead>
+            <tbody id="audit-body"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="/static/js/dashboard.js"></script>
+<script src="/static/js/staff.js"></script>
+{% endblock %}

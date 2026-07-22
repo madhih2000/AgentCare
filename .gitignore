@@ -104,3 +104,5 @@ build/
 *.key
 *.crt
 secrets/
+
+.claude/
