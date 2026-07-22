@@ -38,7 +38,7 @@ AgentCare plans, routes, and executes a patient's *non-clinical* administrative 
 | Language / runtime | Python 3.10+ |
 | API framework | FastAPI + Uvicorn |
 | Agent orchestration | [LangGraph](https://github.com/langchain-ai/langgraph) (`StateGraph`), LangChain-core for tool schemas |
-| LLM | [Groq](https://groq.com/) — `openai/gpt-oss-120b`, via `langchain-groq` |
+| LLM | [Groq](https://groq.com/) — `openai/gpt-oss-120b` primary, with an automatic fallback chain (`openai/gpt-oss-20b` → `llama-3.3-70b-versatile` → `llama-3.1-8b-instant`) via `langchain-groq` |
 | Database | SQLite (persistent, file-based) via SQLAlchemy 2.0 ORM + Alembic migrations |
 | Workflow-state checkpointer | LangGraph `MemorySaver` (dev) or `SqliteSaver` (persistent) |
 | Auth | JWT (`python-jose`) + `passlib`/`bcrypt`, delivered as an httponly cookie |
@@ -65,7 +65,7 @@ graph TB
         Tools["agents/tools/<br/>@tool wrappers over services"]
     end
 
-    LLM["Groq API<br/>openai/gpt-oss-120b"]
+    LLM["Groq API<br/>gpt-oss-120b + fallback chain"]
     DB[(SQLite<br/>SQLAlchemy + Alembic)]
 
     UI -->|fetch / EventSource| Routes
@@ -244,7 +244,7 @@ pip install -e ".[dev]"
 copy .env.example .env
 ```
 
-Edit `.env` and set `GROQ_API_KEY`. Everything else has a sensible default for local development.
+Edit `.env` and set `GROQ_API_KEY`. Everything else has a sensible default for local development, including `GROQ_FALLBACK_MODELS` — a comma-separated backup list (`openai/gpt-oss-20b,llama-3.3-70b-versatile,llama-3.1-8b-instant` by default) used automatically if the primary model errors.
 
 ### 3. Create the database
 
@@ -314,6 +314,8 @@ src/
 **SSE over client-side polling.** The background workflow already writes its progress to the `WorkflowRun` row after every agent step. Rather than have the browser poll `GET /api/workflows/{id}` on a timer, the stream endpoint does that polling server-side (every 400ms) and pushes only new trace entries over a single long-lived connection — fewer round trips, and the frontend renders each agent's stage as it lands instead of in one batch at the end.
 
 **One retry policy, not two stacked ones.** The Groq SDK has its own built-in retry; `langchain-groq`'s client is configured with `max_retries=0` and every LLM call instead goes through `utils/retry.py`, which does exponential backoff with full jitter (`random(0, min(max_delay, base·2ⁿ))`). A single, observable retry policy is easier to reason about than two independent ones compounding their wait times.
+
+**Model fallback chain, layered under the retry policy.** A single Groq model can be rate-limited, temporarily overloaded, or deprecated without notice — and a hackathon demo shouldn't go down because of it. `agents/llm.py::get_llm_with_fallbacks` binds each agent's tools to the primary model *and* every backup model (`GROQ_FALLBACK_MODELS`), then chains them with LangChain's native `.with_fallbacks()`. On error, the next model in the chain is tried immediately — no backoff delay — since a different model is very unlikely to be failing for the same reason. The jittered-backoff retry still wraps the *whole* chain: if every model fails (e.g. a network blip), the entire chain is retried with backoff before the step is reported as failed. This gives two independent, complementary layers of resilience instead of one doing both jobs badly.
 
 **Tools are thin wrappers over services, never inline logic.** Every `@tool` function in `agents/tools/` opens a session, calls a `services/` function, and returns a plain dict. This is what makes the tools "real" per the brief's requirement — an agent tool can't silently drift from what the REST API and the rest of the app does, because they call the exact same service function.
 
