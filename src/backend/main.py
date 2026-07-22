@@ -17,7 +17,11 @@ from backend.routes import (
     workflows,
 )
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
+    datefmt="%H:%M:%S",
+)
 settings = get_settings()
 
 app = FastAPI(title="AgentCare", description="Agentic AI for patient administration and care coordination")

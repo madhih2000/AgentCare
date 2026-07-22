@@ -1,10 +1,15 @@
+import logging
+
 from backend.agents.runtime import run_agent_loop
 from backend.agents.state import WorkflowState, persist_step
 from backend.agents.tools.department_tools import classify_department, list_departments
 from backend.prompts.routing_prompt import ROUTING_SYSTEM_PROMPT
 
+logger = logging.getLogger("agentcare.agents.routing")
+
 
 def routing_agent_node(state: WorkflowState) -> dict:
+    logger.info("Workflow %s: Department Routing agent starting", state["workflow_run_id"])
     trace = list(state.get("trace", []))
 
     user_message = (
@@ -15,6 +20,7 @@ def routing_agent_node(state: WorkflowState) -> dict:
         system_prompt=ROUTING_SYSTEM_PROMPT,
         tools=[list_departments, classify_department],
         user_message=user_message,
+        agent_name="routing",
     )
     trace.append({"agent": "routing", "tool_calls": result["trace"], "output": result["content"]})
 
@@ -27,4 +33,8 @@ def routing_agent_node(state: WorkflowState) -> dict:
                 department_id, department_name = res["id"], res["name"]
 
     persist_step(state, trace, "routing", department_id=department_id, department_name=department_name)
+    logger.info(
+        "Workflow %s: Department Routing agent finished (department=%s)",
+        state["workflow_run_id"], department_name,
+    )
     return {"trace": trace, "department_id": department_id, "department_name": department_name}

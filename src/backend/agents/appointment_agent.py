@@ -1,3 +1,5 @@
+import logging
+
 from backend.agents.runtime import run_agent_loop
 from backend.agents.state import WorkflowState, persist_step
 from backend.agents.tools.appointment_tools import (
@@ -9,11 +11,17 @@ from backend.agents.tools.appointment_tools import (
 )
 from backend.prompts.appointment_prompt import APPOINTMENT_SYSTEM_PROMPT
 
+logger = logging.getLogger("agentcare.agents.appointment")
+
 
 def appointment_agent_node(state: WorkflowState) -> dict:
     if not state.get("department_id"):
+        logger.info(
+            "Workflow %s: Appointment agent skipped (no department routed)", state["workflow_run_id"]
+        )
         return {}
 
+    logger.info("Workflow %s: Appointment agent starting", state["workflow_run_id"])
     trace = list(state.get("trace", []))
     user_message = (
         f"Patient ID: {state['patient_id']}\n"
@@ -28,6 +36,7 @@ def appointment_agent_node(state: WorkflowState) -> dict:
         system_prompt=APPOINTMENT_SYSTEM_PROMPT,
         tools=[list_doctors, list_open_slots, book_appointment, reschedule_appointment, cancel_appointment],
         user_message=user_message,
+        agent_name="appointment",
     )
     trace.append({"agent": "appointment", "tool_calls": result["trace"], "output": result["content"]})
 
@@ -42,5 +51,9 @@ def appointment_agent_node(state: WorkflowState) -> dict:
 
     persist_step(
         state, trace, "appointment", appointment_id=appointment_id, appointment_start=appointment_start
+    )
+    logger.info(
+        "Workflow %s: Appointment agent finished (appointment_id=%s)",
+        state["workflow_run_id"], appointment_id,
     )
     return {"trace": trace, "appointment_id": appointment_id, "appointment_start": appointment_start}

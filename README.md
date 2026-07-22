@@ -13,6 +13,7 @@ AgentCare plans, routes, and executes a patient's *non-clinical* administrative 
 - [Tech stack](#tech-stack)
 - [Architecture](#architecture)
 - [Agent pipeline](#agent-pipeline)
+- [Tools](#tools)
 - [Data model](#data-model)
 - [Getting started](#getting-started)
 - [Running tests](#running-tests)
@@ -122,6 +123,27 @@ Each agent has its **own system prompt** (`src/backend/prompts/`) and **own tool
 | Appointment | `agents/appointment_agent.py` | `list_doctors`, `list_open_slots`, `book_appointment`, `reschedule_appointment`, `cancel_appointment` |
 | Document | `agents/document_agent.py` | `list_patient_documents`, `missing_documents` |
 | Follow-up | `agents/followup_agent.py` | `create_appointment_reminder`, `create_document_followup_reminder` |
+
+## Tools
+
+Every tool is a thin `@langchain_core.tools.tool`-decorated wrapper in `src/backend/agents/tools/` that opens a DB session, calls the matching `services/` function, and returns a plain dict — the LLM only ever sees real, persisted data, and every tool call shows up as its own step in the trace UI. None of these return a fixed response; each one reads or writes an actual SQL row.
+
+| Tool | File | What it does |
+|---|---|---|
+| `get_patient_profile` | `patient_tools.py` | Looks up a patient's profile by id to confirm the record exists before any administrative work proceeds. |
+| `list_departments` | `department_tools.py` | Lists all active hospital departments a request could be routed to. |
+| `classify_department` | `department_tools.py` | Matches free-text request against real department rows via keyword rules, so routing lands on a real department — never a hallucinated name. |
+| `list_doctors` | `appointment_tools.py` | Lists active doctors within a given department. |
+| `list_open_slots` | `appointment_tools.py` | Lists open, bookable appointment slots for a doctor, soonest first. |
+| `book_appointment` | `appointment_tools.py` | Books a patient into a specific open slot; fails with a clear error if the slot is no longer available. |
+| `reschedule_appointment` | `appointment_tools.py` | Moves an existing appointment to a new open slot, freeing the old one. |
+| `cancel_appointment` | `appointment_tools.py` | Cancels an appointment and frees its slot. |
+| `list_patient_documents` | `document_tools.py` | Lists documents already on file for a patient, flagging which are duplicates. |
+| `missing_documents` | `document_tools.py` | Returns the required document types still missing for a patient given the routed department. |
+| `create_appointment_reminder` | `reminder_tools.py` | Creates a reminder scheduled 24 hours before a booked appointment. |
+| `create_document_followup_reminder` | `reminder_tools.py` | Creates a follow-up reminder for a patient with outstanding required documents. |
+| `create_escalation` | `escalation_tools.py` | Persists a human-review escalation for a workflow run and halts automated processing until staff resolve it. |
+| `log_agent_decision` | `audit_tools.py` | Records an explicit agent decision/reasoning note to the audit log, on top of the automatic audit events services already write on data mutations. |
 
 ## Data model
 
@@ -304,6 +326,15 @@ src/
     ├── templates/                # Jinja2 (info, auth, patient, staff)
     └── static/{css,js}           # design tokens, shared components, per-page JS
 ```
+
+### `models/` vs. `schemas/`
+
+These two directories look similar but solve different problems, and the distinction is deliberate:
+
+- **`models/`** — SQLAlchemy ORM classes (`User`, `Department`, `Appointment`, ...). Each one maps directly to a database table: it defines columns, foreign keys, relationships, and enum constraints. This is the *persistence* shape — it's what actually gets written to and read from SQLite, and it's what `services/` operates on.
+- **`schemas/`** — Pydantic classes (`UserOut`, `AppointmentOut`, `RegisterRequest`, ...). Each one defines the *wire* shape: what a request body must contain to be valid, and what a response body looks like when serialized to JSON. `routes/` use these for validation and `response_model=`.
+
+They're kept separate on purpose: the database shape and the API shape are allowed to diverge — a schema can omit a sensitive column (`password_hash` never appears in `UserOut`), rename a field, or combine data from more than one model, without touching the table definition. Most `*Out` schemas set `model_config`/`Config.from_attributes = True`, which lets FastAPI build the response directly from an ORM instance (`user.role.value` etc.) instead of manually copying fields. A model changing its DB representation (e.g. a new index) doesn't force an API change, and an API change (e.g. hiding a field) doesn't force a migration.
 
 ## Design decisions
 

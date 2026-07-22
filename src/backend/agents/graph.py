@@ -78,10 +78,17 @@ def run_workflow(*, workflow_run_id: str, patient_id: str, actor_id: str, reques
         "status": "in_progress",
     }
     config = {"configurable": {"thread_id": workflow_run_id}}
+    logger.info(
+        "Workflow %s: === starting for patient %s: %r ===", workflow_run_id, patient_id, request_text
+    )
     try:
-        return graph.invoke(initial_state, config=config)
+        final_state = graph.invoke(initial_state, config=config)
+        logger.info(
+            "Workflow %s: === finished with status=%s ===", workflow_run_id, final_state.get("status")
+        )
+        return final_state
     except Exception as exc:
-        logger.error("Workflow %s failed: %s", workflow_run_id, exc)
+        logger.error("Workflow %s: === failed: %s ===", workflow_run_id, exc)
         from backend.agents.state import persist_step
 
         persist_step(initial_state, [{"agent": "graph", "tool_calls": [], "output": str(exc)}], "failed", status="failed")

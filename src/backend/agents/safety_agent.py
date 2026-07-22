@@ -1,11 +1,16 @@
+import logging
+
 from backend.agents.runtime import run_agent_loop
 from backend.agents.state import WorkflowState, persist_step
 from backend.agents.tools.escalation_tools import create_escalation
 from backend.prompts.safety_prompt import SAFETY_SYSTEM_PROMPT
 from backend.utils.validators import is_clinical_overreach_request, is_emergency_request
 
+logger = logging.getLogger("agentcare.agents.safety")
+
 
 def safety_agent_node(state: WorkflowState) -> dict:
+    logger.info("Workflow %s: Safety & Escalation agent starting", state["workflow_run_id"])
     trace = list(state.get("trace", []))
     request_text = state["request_text"]
 
@@ -35,6 +40,9 @@ def safety_agent_node(state: WorkflowState) -> dict:
             }
         )
         persist_step(state, trace, "safety", status="escalated", escalated=True, escalation_reason=reason)
+        logger.warning(
+            "Workflow %s: Safety agent ESCALATED (deterministic rule): %s", state["workflow_run_id"], reason
+        )
         return {"trace": trace, "escalated": True, "escalation_reason": reason, "status": "escalated"}
 
     # Secondary LLM-judgement layer for ambiguous cases the keyword rules miss.
@@ -47,6 +55,7 @@ def safety_agent_node(state: WorkflowState) -> dict:
         system_prompt=SAFETY_SYSTEM_PROMPT,
         tools=[create_escalation],
         user_message=user_message,
+        agent_name="safety",
     )
     escalated = any(call["tool"] == "create_escalation" for call in result["trace"])
     trace.append({"agent": "safety", "tool_calls": result["trace"], "output": result["content"]})
@@ -55,6 +64,9 @@ def safety_agent_node(state: WorkflowState) -> dict:
     persist_step(
         state, trace, "safety", status=status,
         escalated=escalated, escalation_reason=result["content"] if escalated else None,
+    )
+    logger.info(
+        "Workflow %s: Safety agent finished (escalated=%s)", state["workflow_run_id"], escalated
     )
     return {
         "trace": trace,
