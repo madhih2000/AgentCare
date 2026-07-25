@@ -46,16 +46,25 @@
         </div>
         <div class="pipeline-trace" id="workflow-trace"></div>
       </div>
+
+      <div id="clarification-box" class="card clarification-card hidden">
+        <div class="card-title">{{ icons.compass("icon-sm") }} One more thing…</div>
+        <p class="clarification-question" id="clarification-question"></p>
+        <form id="clarification-form" class="row">
+          <input type="text" id="clarification-answer" class="manage-field" placeholder="Type your answer…" autocomplete="off" required />
+          <button type="submit" class="btn btn-primary btn-sm" id="clarification-submit-btn">Send</button>
+        </form>
+      </div>
     </section>
 
     <section id="tab-appointments" class="tab-panel">
       <h1 class="page-title">Appointments</h1>
-      <p class="page-subtitle">Appointments booked through your requests.</p>
+      <p class="page-subtitle">Appointments booked through your requests. Click a row for details.</p>
       <div class="card">
         <div class="table-scroll">
           <table class="data-table">
-            <thead><tr><th>Status</th><th>Doctor / Slot</th><th>Reason</th><th>Updated</th><th></th></tr></thead>
-            <tbody id="appointments-body"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody>
+            <thead><tr><th></th><th>Status</th><th>Doctor</th><th>Reason</th><th>Updated</th><th></th></tr></thead>
+            <tbody id="appointments-body"><tr><td colspan="6" class="muted">Loading…</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -87,8 +96,8 @@
       <div class="card">
         <div class="table-scroll">
           <table class="data-table">
-            <thead><tr><th>Type</th><th>Scheduled</th><th>Status</th></tr></thead>
-            <tbody id="reminders-body"><tr><td colspan="3" class="muted">Loading…</td></tr></tbody>
+            <thead><tr><th></th><th>Type</th><th>Scheduled</th><th>Status</th></tr></thead>
+            <tbody id="reminders-body"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
           </table>
         </div>
       </div>

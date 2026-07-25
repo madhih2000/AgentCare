@@ -18,7 +18,11 @@ class AppointmentOut(BaseModel):
     id: str
     patient_id: str
     doctor_id: str
+    doctor_name: str
+    department_name: str | None = None
     slot_id: str
+    slot_start: datetime | None = None
+    slot_end: datetime | None = None
     status: str
     reason: str | None
     created_at: datetime

@@ -7,6 +7,10 @@ class WorkflowRequestIn(BaseModel):
     message: str
 
 
+class WorkflowRespondIn(BaseModel):
+    message: str
+
+
 class WorkflowRunOut(BaseModel):
     id: str
     patient_id: str
@@ -30,6 +34,7 @@ class WorkflowStatusOut(WorkflowRunOut):
     appointment_start: str | None = None
     missing_documents: list[str] = []
     final_summary: str | None = None
+    clarification_question: str | None = None
 
 
 class EscalationOut(BaseModel):

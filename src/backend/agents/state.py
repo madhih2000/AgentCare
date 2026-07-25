@@ -21,6 +21,8 @@ class WorkflowState(TypedDict, total=False):
     missing_documents: list[str]
     status: str
     final_summary: Optional[str]
+    needs_clarification: bool
+    clarification_question: Optional[str]
 
 
 def persist_step(

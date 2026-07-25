@@ -72,3 +72,21 @@ class Appointment(Base):
     )
 
     slot: Mapped["AppointmentSlot"] = relationship(back_populates="appointment")
+
+    @property
+    def doctor_name(self) -> str:
+        return self.slot.doctor.name if self.slot and self.slot.doctor else "Unknown doctor"
+
+    @property
+    def department_name(self) -> str | None:
+        if self.slot and self.slot.doctor:
+            return self.slot.doctor.department.name
+        return None
+
+    @property
+    def slot_start(self) -> datetime | None:
+        return self.slot.start_time if self.slot else None
+
+    @property
+    def slot_end(self) -> datetime | None:
+        return self.slot.end_time if self.slot else None

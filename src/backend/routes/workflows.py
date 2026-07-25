@@ -9,24 +9,37 @@ from sqlalchemy.orm import Session
 from backend.agents.graph import run_workflow
 from backend.db.session import SessionLocal, get_db
 from backend.models.user import User
+from backend.models.workflow import WorkflowStatus
 from backend.routes.deps import require_patient
-from backend.schemas.workflow import WorkflowRequestIn, WorkflowRunOut, WorkflowStatusOut
+from backend.schemas.workflow import (
+    WorkflowRequestIn,
+    WorkflowRespondIn,
+    WorkflowRunOut,
+    WorkflowStatusOut,
+)
 from backend.services import patient_service, workflow_service
 from backend.services.exceptions import NotFoundError
 
 router = APIRouter(prefix="/workflows", tags=["workflows"])
 logger = logging.getLogger("agentcare.routes.workflows")
 
-TERMINAL_STATUSES = {"completed", "failed", "escalated"}
+TERMINAL_STATUSES = {"completed", "failed", "escalated", "needs_clarification"}
 
 
-def _execute_workflow(workflow_run_id: str, patient_id: str, actor_id: str, request_text: str) -> None:
+def _execute_workflow(
+    workflow_run_id: str,
+    patient_id: str,
+    actor_id: str,
+    request_text: str,
+    initial_trace: list[dict] | None = None,
+) -> None:
     try:
         run_workflow(
             workflow_run_id=workflow_run_id,
             patient_id=patient_id,
             actor_id=actor_id,
             request_text=request_text,
+            initial_trace=initial_trace,
         )
     except Exception:
         logger.exception("Background workflow %s failed", workflow_run_id)
@@ -52,6 +65,7 @@ def _to_status_out(run) -> WorkflowStatusOut:
         appointment_start=state.get("appointment_start"),
         missing_documents=state.get("missing_documents", []),
         final_summary=state.get("final_summary"),
+        clarification_question=state.get("clarification_question"),
     )
 
 
@@ -66,6 +80,53 @@ def submit_request(
     run = workflow_service.create_workflow_run(db, patient_id=profile.id, actor_id=user.id)
 
     background_tasks.add_task(_execute_workflow, run.id, profile.id, user.id, payload.message)
+    return run
+
+
+@router.post("/{workflow_run_id}/respond", response_model=WorkflowRunOut)
+def respond_to_clarification(
+    workflow_run_id: str,
+    payload: WorkflowRespondIn,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(require_patient),
+    db: Session = Depends(get_db),
+):
+    """Answers a question the Coordinator Agent asked via request_clarification.
+    Combines the original request with the Q&A into one message and re-runs
+    the graph from the coordinator, carrying forward the trace already shown
+    to the patient so the pipeline UI keeps its history instead of resetting."""
+    profile = patient_service.get_profile_by_user_id(db, user.id)
+    try:
+        run = workflow_service.get_workflow_run(db, workflow_run_id)
+    except NotFoundError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    if run.patient_id != profile.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Not your workflow")
+    if run.status != WorkflowStatus.needs_clarification:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, detail="This workflow isn't waiting on a reply"
+        )
+
+    state = json.loads(run.state_json or "{}")
+    trace = state.get("trace", [])
+    question = state.get("clarification_question") or "your previous request"
+    prior_request_text = state.get("request_text") or ""
+    combined_text = (
+        f"{prior_request_text}\n\nClarification question asked: {question}\n"
+        f"Patient's answer: {payload.message}"
+    )
+
+    state["needs_clarification"] = False
+    state["clarification_question"] = None
+    workflow_service.update_workflow_state(
+        db,
+        workflow_run_id=run.id,
+        current_step="coordinator",
+        state=state,
+        status=WorkflowStatus.in_progress,
+    )
+
+    background_tasks.add_task(_execute_workflow, run.id, profile.id, user.id, combined_text, trace)
     return run
 
 

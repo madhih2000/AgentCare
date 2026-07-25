@@ -17,6 +17,10 @@ logger = logging.getLogger("agentcare.graph")
 _compiled_graph = None
 
 
+def _route_after_coordinator(state: WorkflowState) -> str:
+    return "clarify" if state.get("needs_clarification") else "safety"
+
+
 def _route_after_safety(state: WorkflowState) -> str:
     return "escalated" if state.get("escalated") else "routing"
 
@@ -48,7 +52,9 @@ def build_graph():
     graph.add_node("followup", followup_agent_node)
 
     graph.set_entry_point("coordinator")
-    graph.add_edge("coordinator", "safety")
+    graph.add_conditional_edges(
+        "coordinator", _route_after_coordinator, {"clarify": END, "safety": "safety"}
+    )
     graph.add_conditional_edges("safety", _route_after_safety, {"escalated": END, "routing": "routing"})
     graph.add_edge("routing", "appointment")
     graph.add_edge("appointment", "document")
@@ -65,17 +71,31 @@ def get_compiled_graph():
     return _compiled_graph
 
 
-def run_workflow(*, workflow_run_id: str, patient_id: str, actor_id: str, request_text: str) -> WorkflowState:
+def run_workflow(
+    *,
+    workflow_run_id: str,
+    patient_id: str,
+    actor_id: str,
+    request_text: str,
+    initial_trace: list[dict] | None = None,
+) -> WorkflowState:
+    """Runs the graph from the coordinator. `initial_trace` carries forward the
+    trace already shown to the user when this call resumes a workflow that
+    was previously paused by the coordinator's request_clarification tool —
+    without it, resuming would wipe the pipeline history the patient already
+    saw."""
     graph = get_compiled_graph()
     initial_state: WorkflowState = {
         "workflow_run_id": workflow_run_id,
         "patient_id": patient_id,
         "actor_id": actor_id,
         "request_text": request_text,
-        "trace": [],
+        "trace": initial_trace or [],
         "escalated": False,
         "missing_documents": [],
         "status": "in_progress",
+        "needs_clarification": False,
+        "clarification_question": None,
     }
     config = {"configurable": {"thread_id": workflow_run_id}}
     logger.info(

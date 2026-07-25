@@ -1,5 +1,6 @@
 (() => {
   let activeSource = null;
+  let currentWorkflowId = null;
 
   const form = document.getElementById("request-form");
   const submitBtn = document.getElementById("request-submit-btn");
@@ -8,6 +9,12 @@
   const meta = document.getElementById("workflow-meta");
   const traceEl = document.getElementById("workflow-trace");
   const submitBtnDefaultLabel = submitBtn ? submitBtn.textContent : "";
+
+  const clarificationBox = document.getElementById("clarification-box");
+  const clarificationQuestionEl = document.getElementById("clarification-question");
+  const clarificationForm = document.getElementById("clarification-form");
+  const clarificationAnswerInput = document.getElementById("clarification-answer");
+  const clarificationSubmitBtn = document.getElementById("clarification-submit-btn");
 
   const PIPELINE_STAGES = [
     { key: "coordinator", label: "Coordinator", initials: "CO" },
@@ -31,6 +38,7 @@
     check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M5 13l4.5 4.5L19 7"/></svg>',
     alert: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M12 4 2.5 20h19z"/><path d="M12 10v4"/><circle cx="12" cy="17" r="0.6" fill="currentColor" stroke="none"/></svg>',
     x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+    chevron: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M9 6l6 6-6 6"/></svg>',
   };
 
   let reachedAgents = new Set();
@@ -170,7 +178,15 @@
     AgentCareUI.toast("Workflow completed", "success");
   }
 
+  function showClarificationPrompt(data) {
+    clarificationQuestionEl.textContent = data.clarification_question || "Could you share a bit more detail about your request?";
+    clarificationBox.classList.remove("hidden");
+    clarificationAnswerInput.value = "";
+    clarificationAnswerInput.focus();
+  }
+
   function streamWorkflow(workflowId) {
+    currentWorkflowId = workflowId;
     if (activeSource) activeSource.close();
     activeSource = new EventSource(`/api/workflows/${workflowId}/stream`);
 
@@ -183,11 +199,22 @@
 
     activeSource.addEventListener("done", (e) => {
       const data = JSON.parse(e.data);
+      activeSource.close();
+
+      if (data.status === "needs_clarification") {
+        setNodeState("coordinator", "done");
+        statusBadge.textContent = "waiting for your reply";
+        statusBadge.className = "badge badge-warning";
+        meta.textContent = `Workflow ${data.id} · paused for clarification`;
+        setSubmitting(false);
+        showClarificationPrompt(data);
+        return;
+      }
+
       finalizePipeline(data);
       statusBadge.textContent = data.status.replace("_", " ");
       statusBadge.className = `badge ${statusBadgeClass(data.status)}`;
       meta.textContent = `Step: ${data.current_step} · Finished ${formatDateTime(data.updated_at)}`;
-      activeSource.close();
       setSubmitting(false);
       showCompletionModal(data);
       loadAppointments();
@@ -204,6 +231,7 @@
   form?.addEventListener("submit", async (e) => {
     e.preventDefault();
     setSubmitting(true);
+    clarificationBox.classList.add("hidden");
     statusCard.classList.remove("hidden");
     renderPipelineSkeleton();
     statusBadge.textContent = "starting…";
@@ -225,35 +253,77 @@
     }
   });
 
+  clarificationForm?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!currentWorkflowId) return;
+    const answer = clarificationAnswerInput.value.trim();
+    if (!answer) return;
+
+    clarificationSubmitBtn.disabled = true;
+    try {
+      await AgentCareAPI.post(`/api/workflows/${currentWorkflowId}/respond`, { message: answer });
+      clarificationBox.classList.add("hidden");
+      setSubmitting(true);
+      statusBadge.textContent = "resuming…";
+      statusBadge.className = "badge badge-info";
+      streamWorkflow(currentWorkflowId);
+    } catch (err) {
+      AgentCareUI.toast(err.message, "danger");
+    } finally {
+      clarificationSubmitBtn.disabled = false;
+    }
+  });
+
+  function appointmentRowHtml(a) {
+    const detailId = `appt-detail-${a.id}`;
+    const when = a.slot_start ? formatDateTime(a.slot_start) : "—";
+    const slotRange = a.slot_start
+      ? `${formatDateTime(a.slot_start)} – ${a.slot_end ? new Date(a.slot_end).toLocaleTimeString(undefined, { timeStyle: "short" }) : "—"}`
+      : "—";
+    return `
+      <tr class="data-row" data-expand-target="${detailId}">
+        <td><span class="row-chevron">${ICONS.chevron}</span></td>
+        <td><span class="badge ${statusBadgeClass(a.status)}">${a.status}</span></td>
+        <td>
+          <div class="cell-primary">${a.doctor_name}</div>
+          <div class="cell-secondary">${a.department_name || "—"} · ${when}</div>
+        </td>
+        <td>${a.reason || "—"}</td>
+        <td>${formatDateTime(a.updated_at)}</td>
+        <td>
+          ${
+            a.status === "booked" || a.status === "rescheduled"
+              ? `<button class="btn btn-secondary btn-sm" data-no-expand onclick="cancelAppointment('${a.id}')">Cancel</button>`
+              : ""
+          }
+        </td>
+      </tr>
+      <tr class="data-row-detail" id="${detailId}">
+        <td colspan="6">
+          <div class="detail-grid">
+            <div><span class="detail-label">Appointment ID</span><span class="detail-value">${a.id}</span></div>
+            <div><span class="detail-label">Doctor</span><span class="detail-value">${a.doctor_name}</span></div>
+            <div><span class="detail-label">Department</span><span class="detail-value">${a.department_name || "—"}</span></div>
+            <div><span class="detail-label">Slot</span><span class="detail-value">${slotRange}</span></div>
+            <div><span class="detail-label">Reason</span><span class="detail-value">${a.reason || "—"}</span></div>
+            <div><span class="detail-label">Booked</span><span class="detail-value">${formatDateTime(a.created_at)}</span></div>
+          </div>
+        </td>
+      </tr>`;
+  }
+
   window.loadAppointments = async function loadAppointments() {
     const body = document.getElementById("appointments-body");
     if (!body) return;
     try {
       const appointments = await AgentCareAPI.get("/api/appointments");
       if (!appointments.length) {
-        body.innerHTML = `<tr><td colspan="5" class="empty-state">No appointments yet. Submit a request to book one.</td></tr>`;
+        body.innerHTML = `<tr><td colspan="6" class="empty-state">No appointments yet. Submit a request to book one.</td></tr>`;
         return;
       }
-      body.innerHTML = appointments
-        .map(
-          (a) => `
-        <tr>
-          <td><span class="badge ${statusBadgeClass(a.status)}">${a.status}</span></td>
-          <td>Doctor ${a.doctor_id.slice(0, 8)} · Slot ${a.slot_id.slice(0, 8)}</td>
-          <td>${a.reason || "—"}</td>
-          <td>${formatDateTime(a.updated_at)}</td>
-          <td>
-            ${
-              a.status === "booked" || a.status === "rescheduled"
-                ? `<button class="btn btn-secondary btn-sm" onclick="cancelAppointment('${a.id}')">Cancel</button>`
-                : ""
-            }
-          </td>
-        </tr>`
-        )
-        .join("");
+      body.innerHTML = appointments.map(appointmentRowHtml).join("");
     } catch (err) {
-      body.innerHTML = `<tr><td colspan="5" class="empty-state">${err.message}</td></tr>`;
+      body.innerHTML = `<tr><td colspan="6" class="empty-state">${err.message}</td></tr>`;
     }
   };
 
@@ -268,29 +338,55 @@
     }
   };
 
+  function reminderRowHtml(r) {
+    const detailId = `reminder-detail-${r.id}`;
+    return `
+      <tr class="data-row" data-expand-target="${detailId}">
+        <td><span class="row-chevron">${ICONS.chevron}</span></td>
+        <td>${r.reminder_type.replace(/_/g, " ")}</td>
+        <td>${formatDateTime(r.scheduled_at)}</td>
+        <td><span class="badge ${statusBadgeClass(r.status)}">${r.status}</span></td>
+      </tr>
+      <tr class="data-row-detail" id="${detailId}">
+        <td colspan="4">
+          <div class="detail-grid">
+            <div><span class="detail-label">Reminder ID</span><span class="detail-value">${r.id}</span></div>
+            <div><span class="detail-label">Type</span><span class="detail-value">${r.reminder_type.replace(/_/g, " ")}</span></div>
+            <div><span class="detail-label">Scheduled for</span><span class="detail-value">${formatDateTime(r.scheduled_at)}</span></div>
+            ${
+              r.appointment_id
+                ? `<div><span class="detail-label">Linked appointment</span><span class="detail-value">${r.appointment_id}</span></div>`
+                : ""
+            }
+          </div>
+        </td>
+      </tr>`;
+  }
+
   window.loadReminders = async function loadReminders() {
     const body = document.getElementById("reminders-body");
     if (!body) return;
     try {
       const reminders = await AgentCareAPI.get("/api/reminders");
       if (!reminders.length) {
-        body.innerHTML = `<tr><td colspan="3" class="empty-state">No reminders yet.</td></tr>`;
+        body.innerHTML = `<tr><td colspan="4" class="empty-state">No reminders yet.</td></tr>`;
         return;
       }
-      body.innerHTML = reminders
-        .map(
-          (r) => `
-        <tr>
-          <td>${r.reminder_type.replace(/_/g, " ")}</td>
-          <td>${formatDateTime(r.scheduled_at)}</td>
-          <td><span class="badge ${statusBadgeClass(r.status)}">${r.status}</span></td>
-        </tr>`
-        )
-        .join("");
+      body.innerHTML = reminders.map(reminderRowHtml).join("");
     } catch (err) {
-      body.innerHTML = `<tr><td colspan="3" class="empty-state">${err.message}</td></tr>`;
+      body.innerHTML = `<tr><td colspan="4" class="empty-state">${err.message}</td></tr>`;
     }
   };
+
+  document.addEventListener("click", (e) => {
+    if (e.target.closest("[data-no-expand]")) return;
+    const row = e.target.closest(".data-row");
+    if (!row) return;
+    const target = document.getElementById(row.dataset.expandTarget);
+    if (!target) return;
+    const isOpen = target.classList.toggle("open");
+    row.classList.toggle("expanded", isOpen);
+  });
 
   document.addEventListener("tab-shown", (e) => {
     if (e.detail.tab === "appointments") loadAppointments();

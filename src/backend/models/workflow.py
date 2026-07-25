@@ -10,6 +10,7 @@ from backend.db.base import Base
 
 class WorkflowStatus(str, enum.Enum):
     in_progress = "in_progress"
+    needs_clarification = "needs_clarification"
     completed = "completed"
     failed = "failed"
     escalated = "escalated"
