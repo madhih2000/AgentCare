@@ -135,6 +135,8 @@ packaging==26.2
     #   langsmith
 passlib==1.7.4
     # via agentcare
+psycopg2-binary==2.9.12
+    # via agentcare
 pyasn1==0.6.4
     # via
     #   python-jose
