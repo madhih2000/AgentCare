@@ -1,3 +1,5 @@
+import logging
+import tempfile
 from datetime import date
 from pathlib import Path
 
@@ -11,7 +13,28 @@ from backend.utils.checksums import checksum_bytes
 from backend.utils.ids import new_id
 from backend.utils.validators import REQUIRED_DOCUMENTS_BY_DEPARTMENT, infer_document_type
 
+logger = logging.getLogger("agentcare.documents")
 settings = get_settings()
+
+
+def _resolve_upload_dir(patient_id: str) -> Path:
+    upload_dir = Path(settings.upload_dir) / patient_id
+    try:
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        return upload_dir
+    except OSError:
+        # e.g. a read-only filesystem outside /tmp (Vercel's serverless
+        # functions). tempfile.gettempdir() resolves to a guaranteed-writable
+        # directory on every platform — including /tmp there — without
+        # needing UPLOAD_DIR configured. Falling back keeps uploads working
+        # (ephemeral on such platforms) instead of hard-failing the request.
+        fallback_dir = Path(tempfile.gettempdir()) / "agentcare-uploads" / patient_id
+        logger.warning(
+            "upload_dir %s isn't writable here; falling back to %s (ephemeral)",
+            upload_dir, fallback_dir,
+        )
+        fallback_dir.mkdir(parents=True, exist_ok=True)
+        return fallback_dir
 
 
 def save_document(
@@ -32,8 +55,7 @@ def save_document(
         .first()
     )
 
-    upload_dir = Path(settings.upload_dir) / patient_id
-    upload_dir.mkdir(parents=True, exist_ok=True)
+    upload_dir = _resolve_upload_dir(patient_id)
     doc_id = new_id()
     file_path = upload_dir / f"{doc_id}_{filename}"
     file_path.write_bytes(content)

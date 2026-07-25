@@ -32,14 +32,28 @@ def _route_after_safety(state: WorkflowState) -> str:
 def _build_checkpointer():
     settings = get_settings()
     if settings.langgraph_checkpointer == "sqlite":
-        import sqlite3
+        try:
+            import sqlite3
 
-        from langgraph.checkpoint.sqlite import SqliteSaver
+            from langgraph.checkpoint.sqlite import SqliteSaver
 
-        db_path = Path(settings.langgraph_checkpoint_db)
-        db_path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(str(db_path), check_same_thread=False)
-        return SqliteSaver(conn)
+            db_path = Path(settings.langgraph_checkpoint_db)
+            db_path.parent.mkdir(parents=True, exist_ok=True)
+            conn = sqlite3.connect(str(db_path), check_same_thread=False)
+            return SqliteSaver(conn)
+        except OSError:
+            # Read-only filesystem (e.g. Vercel's serverless functions
+            # outside /tmp) or any other local-disk problem. The checkpointer
+            # isn't the source of truth for workflow progress — WorkflowRun
+            # .state_json is (see agents/state.py::persist_step) — so falling
+            # back to an in-memory checkpointer only costs checkpoint replay
+            # across restarts, not correctness. Better than crashing every
+            # workflow run over a misconfigured/unwritable path.
+            logger.warning(
+                "LANGGRAPH_CHECKPOINTER=sqlite but %s isn't writable here; "
+                "falling back to MemorySaver for this process.",
+                settings.langgraph_checkpoint_db,
+            )
 
     from langgraph.checkpoint.memory import MemorySaver
 
