@@ -8,6 +8,7 @@
   <a href="/info" class="topnav__brand"><img src="/static/img/logo.png" alt="" class="brand-logo" /> AgentCare</a>
   <div class="topnav__links">
     <a href="/info" class="active">Overview</a>
+    <a href="#why">Why AgentCare</a>
     <a href="#pipeline">How it works</a>
     <a href="#agents">Agent architecture</a>
     <a href="#roles">Roles</a>
@@ -41,7 +42,46 @@
   </div>
 </header>
 
-<section id="pipeline">
+<section id="why">
+  <div class="container">
+    <div class="section-head">
+      <span class="eyebrow">Executive summary</span>
+      <h2>Fewer manual touches. Faster coordination. A complete audit trail.</h2>
+    </div>
+    <p class="section-lead">
+      Every patient request — book an appointment, chase down a document, ask
+      a scheduling question — today means a phone queue, a staff member
+      manually routing it, and a paper or spreadsheet trail that's hard to
+      audit. AgentCare automates the coordination work end to end while
+      keeping every safety-sensitive or unclear case in front of a human,
+      not out of caution as an afterthought, but as the core design.
+    </p>
+    <div class="grid-3">
+      <div class="feature-card">
+        <div class="feature-icon">{{ icons.compass("icon") }}</div>
+        <h3>Minutes, not a phone queue</h3>
+        <p>A request is understood, routed, and actioned in one continuous flow — no manual hand-off between intake, scheduling, and records.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">{{ icons.bell("icon") }}</div>
+        <h3>Fewer missed appointments</h3>
+        <p>Reminders are scheduled automatically the moment a booking completes, and again whenever a required document is still outstanding.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">{{ icons.shield("icon") }}</div>
+        <h3>Compliance built in, not bolted on</h3>
+        <p>Every booking, cancellation, upload, and staff decision writes an audit record automatically — nothing relies on someone remembering to log it.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">{{ icons.clipboard("icon") }}</div>
+        <h3>Never a black box</h3>
+        <p>Staff and patients both see the same live reasoning trail the system used — which agent ran, what it decided, and why — not just a final result.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="pipeline" class="section-alt">
   <div class="container">
     <div class="section-head">
       <span class="eyebrow">Core workflow</span>
@@ -54,6 +94,28 @@
       <div class="pipeline-step"><h4>Appointment booking</h4><p>Check availability, book, reschedule, or cancel.</p></div>
       <div class="pipeline-step"><h4>Document coordination</h4><p>Classify uploads, flag missing or duplicate files.</p></div>
       <div class="pipeline-step"><h4>Confirmation &amp; follow-up</h4><p>Persist state, remind, and schedule follow-up.</p></div>
+    </div>
+
+    <div class="section-head section-head--spaced">
+      <span class="eyebrow">Handling real-world requests</span>
+      <h2>Not every request is clear-cut — AgentCare treats that as normal, not an error.</h2>
+    </div>
+    <div class="scenario-grid">
+      <div class="scenario-card">
+        <span class="scenario-card__tag clear">Clear request</span>
+        <p class="scenario-card__quote">"Book me a cardiology appointment for next Tuesday morning and remind me a day before."</p>
+        <p class="scenario-card__outcome"><strong>Straight through.</strong> Department, action, and timing are all present, so the request is routed, booked, and a reminder is scheduled in one pass — no back-and-forth.</p>
+      </div>
+      <div class="scenario-card">
+        <span class="scenario-card__tag ambiguous">Ambiguous request</span>
+        <p class="scenario-card__quote">"I need to see a doctor."</p>
+        <p class="scenario-card__outcome"><strong>Asks, doesn't guess.</strong> With no department or intent to go on, the system pauses and asks one clarifying question — the same way a good intake coordinator would — then continues from the patient's answer instead of misrouting the request.</p>
+      </div>
+      <div class="scenario-card">
+        <span class="scenario-card__tag emergency">Potential emergency</span>
+        <p class="scenario-card__quote">"I have severe chest pain and can't breathe."</p>
+        <p class="scenario-card__outcome"><strong>Immediate human escalation.</strong> This is caught by a fixed, code-level rule before any AI reasoning even runs, and goes straight to the staff console for review — it can never get "argued out of" escalating.</p>
+      </div>
     </div>
   </div>
 </section>
@@ -78,7 +140,7 @@
       <div class="feature-card">
         <div class="feature-icon">{{ icons.route("icon") }}</div>
         <h3>Department Routing Agent</h3>
-        <p>Classifies the request and maps it to a real, active hospital department — never a hallucinated one.</p>
+        <p>Understands the request and picks the matching department from the hospital's real, active list — its choice is always checked against real records, so it can never route to a department that doesn't exist.</p>
       </div>
       <div class="feature-card">
         <div class="feature-icon">{{ icons.calendar("icon") }}</div>

@@ -14,6 +14,7 @@ class WorkflowRespondIn(BaseModel):
 class WorkflowRunOut(BaseModel):
     id: str
     patient_id: str
+    patient_name: str
     current_step: str
     status: str
     created_at: datetime

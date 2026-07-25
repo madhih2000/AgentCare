@@ -6,7 +6,11 @@ from backend.services.exceptions import NotFoundError
 from backend.utils.ids import new_id
 
 DEPARTMENT_KEYWORDS: dict[str, list[str]] = {
-    "Cardiology": ["heart", "cardiac", "cardiology", "ecg", "chest"],
+    # "cardio" is the common root — it's a substring of "cardiology",
+    # "cardiologist", and "cardiovascular" too, so listing it instead of the
+    # longer "cardiology" form covers all of them (matching the pattern
+    # already used for e.g. "neuro"/"derma" below).
+    "Cardiology": ["heart", "cardiac", "cardio", "ecg", "chest"],
     "Orthopedics": ["bone", "joint", "fracture", "orthopedic", "knee", "back pain"],
     "General Medicine": ["fever", "cold", "flu", "general", "checkup", "cough"],
     "Neurology": ["headache", "migraine", "neuro", "seizure", "nerve"],
@@ -21,6 +25,17 @@ def list_active_departments(db: Session) -> list[Department]:
 
 def get_department_by_name(db: Session, name: str) -> Department | None:
     return db.query(Department).filter(Department.name == name).first()
+
+
+def get_active_department(db: Session, department_id: str) -> Department | None:
+    """Non-raising lookup used to validate an LLM-picked department id — the
+    Routing Agent calls this (via select_department) to confirm its choice
+    is a real, active row rather than trusting its own text output."""
+    return (
+        db.query(Department)
+        .filter(Department.id == department_id, Department.active.is_(True))
+        .first()
+    )
 
 
 def get_department(db: Session, department_id: str) -> Department:
@@ -52,11 +67,11 @@ def create_doctor(db: Session, *, department_id: str, name: str, actor_id: str) 
 
 
 def classify_department(db: Session, request_text: str) -> Department | None:
-    """Deterministic keyword-based fallback classifier used by the routing tool.
-
-    The LLM makes the primary routing decision; this gives the agent a
-    grounded lookup so it maps free text to a *real* Department row rather
-    than hallucinating a department name.
+    """Deterministic keyword-based classifier. The Routing Agent's primary
+    path is now select_department (the LLM picks from list_departments'
+    real results, semantically) — this is a fallback for when the LLM
+    doesn't make a clear pick, and a narrower net than the LLM's own
+    judgment: it will miss synonyms/phrasing the LLM would understand fine.
     """
     lowered = request_text.lower()
     for dept_name, keywords in DEPARTMENT_KEYWORDS.items():

@@ -14,6 +14,17 @@ class SlotOut(BaseModel):
         from_attributes = True
 
 
+class SlotDetailOut(BaseModel):
+    id: str
+    doctor_id: str
+    start_time: datetime
+    end_time: datetime
+    status: str
+    appointment_id: str | None = None
+    patient_name: str | None = None
+    reason: str | None = None
+
+
 class AppointmentOut(BaseModel):
     id: str
     patient_id: str

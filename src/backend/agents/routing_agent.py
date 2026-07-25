@@ -2,7 +2,11 @@ import logging
 
 from backend.agents.runtime import run_agent_loop
 from backend.agents.state import WorkflowState, persist_step
-from backend.agents.tools.department_tools import classify_department, list_departments
+from backend.agents.tools.department_tools import (
+    classify_department,
+    list_departments,
+    select_department,
+)
 from backend.prompts.routing_prompt import ROUTING_SYSTEM_PROMPT
 
 logger = logging.getLogger("agentcare.agents.routing")
@@ -18,16 +22,24 @@ def routing_agent_node(state: WorkflowState) -> dict:
     )
     result = run_agent_loop(
         system_prompt=ROUTING_SYSTEM_PROMPT,
-        tools=[list_departments, classify_department],
+        tools=[list_departments, select_department, classify_department],
         user_message=user_message,
         agent_name="routing",
     )
     trace.append({"agent": "routing", "tool_calls": result["trace"], "output": result["content"]})
 
+    # select_department (the LLM's own, DB-validated pick) is authoritative;
+    # classify_department (fixed keyword list) only fills in if the LLM
+    # never called select_department at all — it's a fallback, not a veto.
     department_id = None
     department_name = None
     for call in result["trace"]:
         if call["tool"] == "classify_department":
+            res = call["result"]
+            if isinstance(res, dict) and res.get("id"):
+                department_id, department_name = res["id"], res["name"]
+    for call in result["trace"]:
+        if call["tool"] == "select_department":
             res = call["result"]
             if isinstance(res, dict) and res.get("id"):
                 department_id, department_name = res["id"], res["name"]

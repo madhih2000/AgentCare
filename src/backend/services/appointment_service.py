@@ -8,6 +8,7 @@ from backend.models.clinical import (
     AppointmentStatus,
     SlotStatus,
 )
+from backend.models.user import PatientProfile, User
 from backend.services import audit_service
 from backend.services.exceptions import ConflictError, NotFoundError, SlotUnavailableError
 from backend.utils.ids import new_id
@@ -36,6 +37,51 @@ def list_open_slots(db: Session, doctor_id: str) -> list[AppointmentSlot]:
         .order_by(AppointmentSlot.start_time)
         .all()
     )
+
+
+def list_doctor_calendar(db: Session, doctor_id: str) -> list[dict]:
+    """Every slot for a doctor (open, held, booked) plus who's booked into it
+    — the staff timetable/calendar view. Looks up the live booked Appointment
+    with an explicit query rather than AppointmentSlot.appointment's
+    one-to-one backref, which can point at a stale cancelled row once a slot
+    has been cancelled and later rebooked."""
+    slots = (
+        db.query(AppointmentSlot)
+        .filter(AppointmentSlot.doctor_id == doctor_id)
+        .order_by(AppointmentSlot.start_time)
+        .all()
+    )
+    entries = []
+    for slot in slots:
+        appointment_id = None
+        patient_name = None
+        reason = None
+        if slot.status == SlotStatus.booked:
+            row = (
+                db.query(Appointment.id, Appointment.reason, User.name)
+                .join(PatientProfile, PatientProfile.id == Appointment.patient_id)
+                .join(User, User.id == PatientProfile.user_id)
+                .filter(
+                    Appointment.slot_id == slot.id,
+                    Appointment.status.in_([AppointmentStatus.booked, AppointmentStatus.rescheduled]),
+                )
+                .first()
+            )
+            if row:
+                appointment_id, reason, patient_name = row
+        entries.append(
+            {
+                "id": slot.id,
+                "doctor_id": slot.doctor_id,
+                "start_time": slot.start_time,
+                "end_time": slot.end_time,
+                "status": slot.status.value,
+                "appointment_id": appointment_id,
+                "patient_name": patient_name,
+                "reason": reason,
+            }
+        )
+    return entries
 
 
 def get_slot(db: Session, slot_id: str) -> AppointmentSlot:

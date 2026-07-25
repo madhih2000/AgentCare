@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from backend.db.session import get_db
 from backend.models.user import User
 from backend.routes.deps import require_staff
-from backend.schemas.appointment import SlotOut
+from backend.schemas.appointment import SlotDetailOut, SlotOut
 from backend.schemas.clinical import DoctorCreate, DoctorOut, SlotCreate
 from backend.schemas.workflow import EscalationDecision, EscalationOut, WorkflowRunOut
 from backend.services import appointment_service, department_service, escalation_service, workflow_service
@@ -59,3 +59,8 @@ def create_slot(payload: SlotCreate, user: User = Depends(require_staff), db: Se
         end_time=payload.end_time,
         actor_id=user.id,
     )
+
+
+@router.get("/doctors/{doctor_id}/calendar", response_model=list[SlotDetailOut])
+def doctor_calendar(doctor_id: str, user: User = Depends(require_staff), db: Session = Depends(get_db)):
+    return appointment_service.list_doctor_calendar(db, doctor_id)

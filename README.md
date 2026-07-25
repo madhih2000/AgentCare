@@ -4,6 +4,8 @@
 
 AgentCare plans, routes, and executes a patient's *non-clinical* administrative journey — registration, department routing, appointment booking, document coordination, reminders, and follow-up — through six purpose-built LangGraph agents, with every action persisted, audited, and escalated to a human when it matters.
 
+**Live demo:** [agent-care-gamma.vercel.app/info](https://agent-care-gamma.vercel.app/info)
+
 > [!IMPORTANT]
 > AgentCare is an **administrative coordination system, not a clinical one**. It never diagnoses conditions, prescribes medication, recommends dosages, or otherwise substitutes for a healthcare professional. Emergency and clinical requests are always routed to human staff — see [Safety boundary](#safety-boundary).
 
@@ -159,7 +161,7 @@ Each agent has its **own system prompt** (`src/backend/prompts/`) and **own tool
 |---|---|---|
 | Coordinator | `agents/coordinator.py` | `get_patient_profile`, `log_agent_decision`, `request_clarification` |
 | Safety & Escalation | `agents/safety_agent.py` (precheck runs as the graph's entry point, before the Coordinator) | `create_escalation` (+ deterministic keyword rules in `utils/validators.py`) |
-| Department Routing | `agents/routing_agent.py` | `list_departments`, `classify_department` |
+| Department Routing | `agents/routing_agent.py` | `list_departments`, `select_department`, `classify_department` (fallback) |
 | Appointment | `agents/appointment_agent.py` | `list_doctors`, `list_open_slots`, `book_appointment`, `reschedule_appointment`, `cancel_appointment` |
 | Document | `agents/document_agent.py` | `list_patient_documents`, `missing_documents` |
 | Follow-up | `agents/followup_agent.py` | `create_appointment_reminder`, `create_document_followup_reminder` |
@@ -173,7 +175,8 @@ Every tool is a thin `@langchain_core.tools.tool`-decorated wrapper in `src/back
 | `get_patient_profile` | `patient_tools.py` | Looks up a patient's profile by id to confirm the record exists before any administrative work proceeds. |
 | `request_clarification` | `clarification_tools.py` | Pauses the workflow with a single question when the Coordinator can't confidently tell what the patient is asking for, instead of guessing. |
 | `list_departments` | `department_tools.py` | Lists all active hospital departments a request could be routed to. |
-| `classify_department` | `department_tools.py` | Matches free-text request against real department rows via keyword rules, so routing lands on a real department — never a hallucinated name. |
+| `select_department` | `department_tools.py` | The Routing Agent's real decision point: the LLM calls this with the id of the department it semantically picked from `list_departments`' results. Validates that id against real records — the LLM's prose reasoning alone never sets the route, only a successful call here does. |
+| `classify_department` | `department_tools.py` | Deterministic keyword-list fallback, used only if the LLM doesn't call `select_department` itself. Narrower than the LLM's own judgment by design — kept as a safety net, not the primary path. |
 | `list_doctors` | `appointment_tools.py` | Lists active doctors within a given department. |
 | `list_open_slots` | `appointment_tools.py` | Lists open, bookable appointment slots for a doctor, soonest first. |
 | `book_appointment` | `appointment_tools.py` | Books a patient into a specific open slot; fails with a clear error if the slot is no longer available. |
@@ -447,6 +450,8 @@ They're kept separate on purpose: the database shape and the API shape are allow
 **Strict `routes → services → utils` layering.** `utils/` never imports from `services/` or `routes/`; `services/` never imports from `routes/`. This keeps business logic (and its unit tests) independent of HTTP concerns, and makes the dependency graph a straight line instead of a tangle — a code reviewer can tell at a glance that a bug in slot-booking logic can't be caused by a routing decorator.
 
 **Deterministic safety checks run before the LLM, not instead of it.** `utils/validators.py` keyword-matches emergency and diagnosis/prescription language in plain Python. This check runs twice: once in `safety_precheck_node`, which is the *graph's entry point* — ahead of the Coordinator and every other LLM call — and again inside the Safety Agent itself, which stays self-contained for its own unit tests. Only requests that pass both cleanly fall through to the Safety Agent's LLM-judgement layer for the ambiguous cases the keyword rules miss. This means the safety boundary required by the brief holds even if the LLM is down, rate-limited, or talked into ignoring its system prompt; it's a code-level circuit breaker, not a suggestion — and critically, nothing downstream (including the Coordinator's own clarification detour, below) can run *before* it.
+
+**The LLM makes the routing decision — a tool call just keeps it honest, not a keyword list.** An earlier version of the Routing Agent extracted `department_id` only from a deterministic keyword-matcher's result, ignoring the LLM's own (often correct) reasoning entirely — so "I need a cardio appointment" silently failed to route, even though the agent's own text said "Cardiology," because "cardio" wasn't in the fixed keyword list. The fix wasn't to grow the keyword list; it was to stop trusting it as the primary signal. The Routing Agent now calls `list_departments` for the real options, decides semantically, and calls `select_department(department_id)` — which is DB-validated (can't return a hallucinated id) but is a genuine LLM judgment call, not a substring match. `classify_department` (the old keyword matcher) stays only as a fallback for when the LLM doesn't call `select_department` at all. Same anti-hallucination guarantee as before, without throwing away what an LLM is actually good at.
 
 **Ask instead of guessing on ambiguous requests.** Routing or booking off a guessed intent is worse than asking — a wrong department or a cancelled-instead-of-rescheduled appointment erodes trust fast. The Coordinator can call `request_clarification` to pause the graph (`END` with `status=needs_clarification`) rather than pass a low-confidence guess down the pipeline; `POST /workflows/{id}/respond` folds the patient's answer back into the request and resumes from the top (through the safety pre-check again), carrying the existing trace forward so the UI reads as one continuous conversation instead of a reset. Because the pre-check always runs first, this loop can never become a way to stall or dodge an emergency escalation.
 
