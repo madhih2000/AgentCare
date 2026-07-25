@@ -16,6 +16,10 @@ AgentCare plans, routes, and executes a patient's *non-clinical* administrative 
 - [Tools](#tools)
 - [Data model](#data-model)
 - [Getting started](#getting-started)
+- [Using AgentCare](#using-agentcare)
+  - [Patient walkthrough](#patient-walkthrough)
+  - [Staff walkthrough](#staff-walkthrough)
+  - [How ambiguous and unsafe requests are handled](#how-ambiguous-and-unsafe-requests-are-handled)
 - [Running tests](#running-tests)
 - [Project structure](#project-structure)
 - [Design decisions](#design-decisions)
@@ -101,22 +105,27 @@ graph TB
 1. `POST /api/workflows` creates a `WorkflowRun` row and hands it to a FastAPI `BackgroundTask` (runs in a thread pool — the event loop stays free).
 2. The frontend opens `GET /api/workflows/{id}/stream`, an SSE connection that watches the `WorkflowRun` row and pushes a `stage` event each time an agent finishes, then a `done` event with the structured result.
 3. Each agent node persists its own trace entry and any new fields (department, appointment, missing documents, escalation reason) into `WorkflowRun.state_json` — so progress is queryable via plain SQL, independent of the LangGraph checkpointer.
-4. If the Coordinator can't confidently tell what's being asked, it pauses the run (`status=needs_clarification`) instead of guessing; the UI shows its question inline, and `POST /api/workflows/{id}/respond` resumes the same run with the patient's answer appended to the request.
+4. Every run passes through a code-only emergency/clinical-overreach check *before* the Coordinator's LLM runs at all, so nothing an LLM decides can delay an emergency escalation — see [Agent pipeline](#agent-pipeline).
+5. If the Coordinator can't confidently tell what's being asked, it pauses the run (`status=needs_clarification`) instead of guessing; the UI shows its question inline, and `POST /api/workflows/{id}/respond` resumes the same run (from the top, through the safety pre-check again) with the patient's answer appended to the request.
 
 ## Agent pipeline
 
 ```mermaid
 flowchart LR
-    Start([Patient request]) --> Coordinator
+    Start([Patient request]) --> Precheck
+
+    Precheck{"🛡️ Deterministic safety pre-check<br/>pure code, no LLM —<br/>runs before the Coordinator"}
+    Precheck -->|emergency / diagnosis /<br/>prescription detected| Escalate["🚨 Escalation record<br/>created — workflow halts"]
+    Precheck -->|clear| Coordinator
 
     Coordinator["🧭 Coordinator Agent<br/>confirms patient record,<br/>scopes the workflow"]
     Coordinator -->|ambiguous — can't tell<br/>what's being asked| Clarify["💬 Ask a clarifying<br/>question, pause & wait"]
-    Clarify -.->|patient replies via<br/>POST /respond| Coordinator
+    Clarify -.->|patient replies via<br/>POST /respond, re-enters<br/>at the pre-check| Precheck
     Coordinator -->|clear enough to act on| Safety
 
-    Safety{"🛡️ Safety & Escalation Agent<br/>code-level check runs<br/>BEFORE any LLM call"}
-    Safety -->|emergency / diagnosis /<br/>prescription detected| Escalate["🚨 Escalation record<br/>created — workflow halts"]
-    Safety -->|clear, or LLM judges safe| Routing
+    Safety{"🛡️ Safety & Escalation Agent<br/>LLM judgement call for cases<br/>the keyword rules miss"}
+    Safety -->|LLM flags for<br/>human review| Escalate
+    Safety -->|clear| Routing
 
     Routing["🧩 Department Routing Agent<br/>maps request to a real,<br/>active Department"] --> Appointment
 
@@ -129,6 +138,7 @@ flowchart LR
     Escalate --> DoneEscalated([Workflow escalated])
 
     style Start fill:#ecfeff,stroke:#0891b2,color:#164e63
+    style Precheck fill:#fee2e2,stroke:#b91c1c,color:#7f1d1d
     style Coordinator fill:#e0f2fe,stroke:#0369a1,color:#0c4a6e
     style Clarify fill:#fef9c3,stroke:#ca8a04,color:#713f12
     style Safety fill:#fee2e2,stroke:#b91c1c,color:#7f1d1d
@@ -141,14 +151,14 @@ flowchart LR
     style Done fill:#dcfce7,stroke:#16a34a,color:#14532d
 ```
 
-If the Coordinator can't tell what the patient actually wants — which department, book vs. reschedule vs. cancel, which document — it calls the `request_clarification` tool instead of guessing. That routes the graph straight to `END` with `WorkflowRun.status = needs_clarification` and a `clarification_question` persisted in state; the SSE stream closes and the UI shows the question inline with a reply box. `POST /api/workflows/{id}/respond` appends the patient's answer to the original request, carries the trace already shown forward (so the pipeline UI doesn't reset), and re-invokes the graph from the Coordinator — repeating for as many turns as the Coordinator needs before it's confident enough to hand off to Safety & Escalation.
+The deterministic pre-check is the graph's real entry point, ahead of any LLM call — including the Coordinator's — so an emergency request can never get diverted into a clarification question. If the Coordinator can't tell what the patient actually wants — which department, book vs. reschedule vs. cancel, which document — it calls the `request_clarification` tool instead of guessing. That routes the graph straight to `END` with `WorkflowRun.status = needs_clarification` and a `clarification_question` persisted in state; the SSE stream closes and the UI shows the question inline with a reply box. `POST /api/workflows/{id}/respond` appends the patient's answer to the original request, carries the trace already shown forward (so the pipeline UI doesn't reset), and re-invokes the graph from the top — through the pre-check again, then the Coordinator — repeating for as many turns as the Coordinator needs before it's confident enough to hand off to Safety & Escalation.
 
 Each agent has its **own system prompt** (`src/backend/prompts/`) and **own tool subset** (`src/backend/agents/tools/`) — no shared prompt, no relabeled helper functions. The compiled graph runs with a checkpointer (`MemorySaver` for dev, `SqliteSaver` for a persistent checkpoint log) selected via `LANGGRAPH_CHECKPOINTER`.
 
 | Agent | File | Tools |
 |---|---|---|
 | Coordinator | `agents/coordinator.py` | `get_patient_profile`, `log_agent_decision`, `request_clarification` |
-| Safety & Escalation | `agents/safety_agent.py` | `create_escalation` (+ deterministic keyword rules in `utils/validators.py`) |
+| Safety & Escalation | `agents/safety_agent.py` (precheck runs as the graph's entry point, before the Coordinator) | `create_escalation` (+ deterministic keyword rules in `utils/validators.py`) |
 | Department Routing | `agents/routing_agent.py` | `list_departments`, `classify_department` |
 | Appointment | `agents/appointment_agent.py` | `list_doctors`, `list_open_slots`, `book_appointment`, `reschedule_appointment`, `cancel_appointment` |
 | Document | `agents/document_agent.py` | `list_patient_documents`, `missing_documents` |
@@ -342,6 +352,57 @@ uvicorn backend.main:app --reload --app-dir src
 
 Visit **http://127.0.0.1:8000/info** for the product overview, or go straight to `/login`.
 
+## Using AgentCare
+
+Everything below assumes the app is running (step 5 above) and the demo data is seeded (step 4) — the three accounts from the table above are all you need; there's no separate "switch role" toggle, the account's role decides which console you land in after login.
+
+### Sign in
+
+- `/info` — the marketing/overview page (also what the logo/brand name links back to from inside the app).
+- `/login` — sign in as any of the three demo accounts, or `/register` a new **patient** account (staff/admin accounts are seed-only, by design — patients can't self-elevate).
+
+### Patient walkthrough
+
+Log in as `patient@agentcare.demo` / `Patient123!`.
+
+1. On the **New request** tab, describe what you need in plain language, e.g. *"I need a cardiology appointment next week, and I'd like to attach my ECG report."*, and click **Submit request**.
+2. Watch the pipeline card light up stage by stage: **Coordinator** confirms your patient record and scopes the request → **Safety & Escalation** clears it → **Department Routing** maps it to *Cardiology* → **Appointment** finds an open slot with one of the seeded doctors (e.g. *Dr. Asha Verma*) and books it → **Document** checks what's already on file → **Follow-up** schedules a reminder for 24 hours before the appointment.
+3. A confirmation popup summarizes the outcome — appointment time, department, anything still missing.
+4. Open the **Appointments** tab: the new booking shows the doctor's name and department, not a raw id. Click anywhere on the row to expand full details (exact slot time, when it was booked), or **Cancel** it from the same row.
+5. Open the **Documents** tab and drop in a file — its type is inferred from the filename (e.g. `ecg_jan.pdf` → `ecg_report`), and re-uploading the same file is flagged as a duplicate by checksum, not filename.
+6. Open the **Reminders** tab to see the reminder Follow-up just created; click it to expand the full schedule and linked appointment id.
+
+### Staff walkthrough
+
+Log in as `staff@agentcare.demo` / `Staff123!` (or `admin@agentcare.demo` / `Admin123!` — both share the staff console; only the audit trail distinguishes who acted).
+
+1. **Requests** — every patient's workflow runs across the whole system, each with its live current step and status, refreshed on load.
+2. **Escalations** — anything the Safety Agent flagged sits here in an `open` state (see [ambiguous vs. unsafe requests](#how-ambiguous-and-unsafe-requests-are-handled) below for what triggers this) until a staff/admin member clicks **Approve** or **Reject** — both decisions are audited.
+3. **Departments & slots** — add a new doctor to an existing department, or open a new appointment slot for an existing doctor; either is immediately usable by the Appointment Agent for any patient.
+4. **Audit log** — every mutating action system-wide (bookings, cancellations, escalation decisions, uploads, doctor/slot creation), newest first, with actor and entity ids.
+
+### How ambiguous and unsafe requests are handled
+
+The Coordinator doesn't guess when it can't tell what a patient wants, and nothing can talk the Safety Agent's deterministic check out of escalating a real emergency — even the Coordinator's own LLM call. Three requests, three different outcomes:
+
+**1. Too vague to route — the Coordinator asks:**
+
+> *"I need to see a doctor."*
+
+There's no department, no symptom area, and no book/reschedule/cancel signal to act on, so the Coordinator calls `request_clarification` instead of picking one. The run pauses (`WorkflowRun.status = needs_clarification`), the SSE stream closes, and the pipeline card shows the question inline with a reply box — e.g. *"Which department would you like to see a doctor in, and are you booking a new appointment?"* Typing *"Cardiology, a new appointment please"* and clicking **Send** posts to `POST /api/workflows/{id}/respond`, which appends that answer to the original request and resumes the same run from the top. The pipeline keeps its existing history and continues rather than resetting — Safety → Routing → Appointment → Document → Follow-up run normally from there.
+
+**2. Specific enough to act on immediately — no pause:**
+
+> *"Book me a cardiology appointment for next Tuesday morning and remind me a day before."*
+
+Department, action, and timing are all present, so the Coordinator proceeds straight through Safety & Escalation with no clarifying question.
+
+**3. A safety match — clarification never gets a chance to happen:**
+
+> *"I have severe chest pain and can't breathe."*
+
+`utils/validators.py`'s keyword check catches this in the `safety_precheck_node`, which is the graph's actual entry point — running before the Coordinator's LLM call, not after it. The run is escalated immediately (`WorkflowRun.status = escalated`) and shows up in the staff console's **Escalations** tab; the patient sees a "sent for human review" popup instead of any follow-up question. This ordering is deliberate: if the Coordinator ran first and merely *tended* to hand emergencies to Safety, a sufficiently confused or adversarial LLM turn could misroute one into a clarification loop instead. Putting the deterministic check first removes that possibility by construction rather than by prompting.
+
 ## Running tests
 
 ```powershell
@@ -385,9 +446,9 @@ They're kept separate on purpose: the database shape and the API shape are allow
 
 **Strict `routes → services → utils` layering.** `utils/` never imports from `services/` or `routes/`; `services/` never imports from `routes/`. This keeps business logic (and its unit tests) independent of HTTP concerns, and makes the dependency graph a straight line instead of a tangle — a code reviewer can tell at a glance that a bug in slot-booking logic can't be caused by a routing decorator.
 
-**Deterministic safety checks run before the LLM, not instead of it.** `utils/validators.py` keyword-matches emergency and diagnosis/prescription language in plain Python, and the Safety Agent checks this *first* — only falling back to an LLM judgement call for ambiguous cases. This means the safety boundary required by the brief holds even if the LLM is down, rate-limited, or talked into ignoring its system prompt; it's a code-level circuit breaker, not a suggestion.
+**Deterministic safety checks run before the LLM, not instead of it.** `utils/validators.py` keyword-matches emergency and diagnosis/prescription language in plain Python. This check runs twice: once in `safety_precheck_node`, which is the *graph's entry point* — ahead of the Coordinator and every other LLM call — and again inside the Safety Agent itself, which stays self-contained for its own unit tests. Only requests that pass both cleanly fall through to the Safety Agent's LLM-judgement layer for the ambiguous cases the keyword rules miss. This means the safety boundary required by the brief holds even if the LLM is down, rate-limited, or talked into ignoring its system prompt; it's a code-level circuit breaker, not a suggestion — and critically, nothing downstream (including the Coordinator's own clarification detour, below) can run *before* it.
 
-**Ask instead of guessing on ambiguous requests.** Routing or booking off a guessed intent is worse than asking — a wrong department or a cancelled-instead-of-rescheduled appointment erodes trust fast. The Coordinator can call `request_clarification` to pause the graph (`END` with `status=needs_clarification`) rather than pass a low-confidence guess down the pipeline; `POST /workflows/{id}/respond` folds the patient's answer back into the request and resumes from the Coordinator, carrying the existing trace forward so the UI reads as one continuous conversation instead of a reset.
+**Ask instead of guessing on ambiguous requests.** Routing or booking off a guessed intent is worse than asking — a wrong department or a cancelled-instead-of-rescheduled appointment erodes trust fast. The Coordinator can call `request_clarification` to pause the graph (`END` with `status=needs_clarification`) rather than pass a low-confidence guess down the pipeline; `POST /workflows/{id}/respond` folds the patient's answer back into the request and resumes from the top (through the safety pre-check again), carrying the existing trace forward so the UI reads as one continuous conversation instead of a reset. Because the pre-check always runs first, this loop can never become a way to stall or dodge an emergency escalation.
 
 **SSE over client-side polling.** The background workflow already writes its progress to the `WorkflowRun` row after every agent step. Rather than have the browser poll `GET /api/workflows/{id}` on a timer, the stream endpoint does that polling server-side (every 400ms) and pushes only new trace entries over a single long-lived connection — fewer round trips, and the frontend renders each agent's stage as it lands instead of in one batch at the end.
 

@@ -9,20 +9,59 @@ from backend.utils.validators import is_clinical_overreach_request, is_emergency
 logger = logging.getLogger("agentcare.agents.safety")
 
 
+def _deterministic_reason(request_text: str) -> str | None:
+    if is_emergency_request(request_text):
+        return "Emergency language detected in request; requires immediate human attention."
+    if is_clinical_overreach_request(request_text):
+        return "Request asks for diagnosis, prescription, or dosage guidance, which this system cannot provide."
+    return None
+
+
+def safety_precheck_node(state: WorkflowState) -> dict:
+    """The graph's actual entry point — a code-only, LLM-independent check
+    that runs BEFORE the Coordinator. Without this, an emergency request
+    could be diverted into a request_clarification pause by the Coordinator's
+    LLM before the Safety Agent ever sees it, delaying an escalation that
+    must be immediate. Nothing upstream of this node involves an LLM call, so
+    this half of the safety boundary holds even if the LLM is down,
+    rate-limited, or talked into ignoring its system prompt."""
+    reason = _deterministic_reason(state["request_text"])
+    if not reason:
+        return {}
+
+    trace = list(state.get("trace", []))
+    tool_result = create_escalation.invoke(
+        {
+            "workflow_run_id": state["workflow_run_id"],
+            "reason": reason,
+            "actor_id": state.get("actor_id") or "",
+        }
+    )
+    trace.append(
+        {
+            "agent": "safety",
+            "tool_calls": [{"tool": "create_escalation", "args": {"reason": reason}, "result": tool_result}],
+            "output": f"Escalated to human review: {reason}",
+        }
+    )
+    persist_step(state, trace, "safety", status="escalated", escalated=True, escalation_reason=reason)
+    logger.warning(
+        "Workflow %s: Safety precheck ESCALATED before the Coordinator ran (deterministic rule): %s",
+        state["workflow_run_id"], reason,
+    )
+    return {"trace": trace, "escalated": True, "escalation_reason": reason, "status": "escalated"}
+
+
 def safety_agent_node(state: WorkflowState) -> dict:
     logger.info("Workflow %s: Safety & Escalation agent starting", state["workflow_run_id"])
     trace = list(state.get("trace", []))
     request_text = state["request_text"]
 
-    # Deterministic, code-enforced boundary — cannot be talked out of by the
-    # LLM. Runs before any LLM call so the safety rule holds even if the LLM
-    # is unavailable or misbehaves.
-    if is_emergency_request(request_text):
-        reason = "Emergency language detected in request; requires immediate human attention."
-    elif is_clinical_overreach_request(request_text):
-        reason = "Request asks for diagnosis, prescription, or dosage guidance, which this system cannot provide."
-    else:
-        reason = None
+    # Same deterministic check as safety_precheck_node — redundant in the
+    # compiled graph (the precheck node already ran it before the Coordinator
+    # was reached), but this node is also unit-tested and called directly, so
+    # it stays fully self-contained rather than relying on graph ordering.
+    reason = _deterministic_reason(request_text)
 
     if reason:
         tool_result = create_escalation.invoke(

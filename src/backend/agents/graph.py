@@ -8,13 +8,17 @@ from backend.agents.coordinator import coordinator_node
 from backend.agents.document_agent import document_agent_node
 from backend.agents.followup_agent import followup_agent_node
 from backend.agents.routing_agent import routing_agent_node
-from backend.agents.safety_agent import safety_agent_node
+from backend.agents.safety_agent import safety_agent_node, safety_precheck_node
 from backend.agents.state import WorkflowState
 from backend.config import get_settings
 
 logger = logging.getLogger("agentcare.graph")
 
 _compiled_graph = None
+
+
+def _route_after_precheck(state: WorkflowState) -> str:
+    return "escalated" if state.get("escalated") else "coordinator"
 
 
 def _route_after_coordinator(state: WorkflowState) -> str:
@@ -44,6 +48,7 @@ def _build_checkpointer():
 
 def build_graph():
     graph = StateGraph(WorkflowState)
+    graph.add_node("safety_precheck", safety_precheck_node)
     graph.add_node("coordinator", coordinator_node)
     graph.add_node("safety", safety_agent_node)
     graph.add_node("routing", routing_agent_node)
@@ -51,7 +56,10 @@ def build_graph():
     graph.add_node("document", document_agent_node)
     graph.add_node("followup", followup_agent_node)
 
-    graph.set_entry_point("coordinator")
+    graph.set_entry_point("safety_precheck")
+    graph.add_conditional_edges(
+        "safety_precheck", _route_after_precheck, {"escalated": END, "coordinator": "coordinator"}
+    )
     graph.add_conditional_edges(
         "coordinator", _route_after_coordinator, {"clarify": END, "safety": "safety"}
     )
@@ -79,11 +87,11 @@ def run_workflow(
     request_text: str,
     initial_trace: list[dict] | None = None,
 ) -> WorkflowState:
-    """Runs the graph from the coordinator. `initial_trace` carries forward the
-    trace already shown to the user when this call resumes a workflow that
-    was previously paused by the coordinator's request_clarification tool —
-    without it, resuming would wipe the pipeline history the patient already
-    saw."""
+    """Runs the graph from its entry point (the deterministic safety precheck).
+    `initial_trace` carries forward the trace already shown to the user when
+    this call resumes a workflow that was previously paused by the
+    coordinator's request_clarification tool — without it, resuming would
+    wipe the pipeline history the patient already saw."""
     graph = get_compiled_graph()
     initial_state: WorkflowState = {
         "workflow_run_id": workflow_run_id,
