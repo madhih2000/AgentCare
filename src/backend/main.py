@@ -1,4 +1,5 @@
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -22,9 +23,36 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
     datefmt="%H:%M:%S",
 )
+logger = logging.getLogger("agentcare.main")
 settings = get_settings()
 
-app = FastAPI(title="AgentCare", description="Agentic AI for patient administration and care coordination")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Idempotent: creates any tables that don't exist yet and seeds synthetic
+    # demo data only if none is present (backend/seed/seed_data.py skips
+    # itself once departments exist). Safe to run on every startup, including
+    # against an already-migrated local/production database — it's what
+    # keeps ephemeral deployments (e.g. Vercel's /tmp-backed SQLite, wiped on
+    # every cold start) bootable without a persistent database attached.
+    # Skipped under APP_ENV=test: pytest's TestClient triggers this same
+    # lifespan, but tests bind their own isolated in-memory engine and must
+    # never touch the real module-level SessionLocal (see tests/conftest.py).
+    if settings.app_env != "test":
+        from backend.seed.seed_data import seed
+
+        try:
+            seed()
+        except Exception:
+            logger.exception("Startup schema/seed check failed")
+    yield
+
+
+app = FastAPI(
+    title="AgentCare",
+    description="Agentic AI for patient administration and care coordination",
+    lifespan=lifespan,
+)
 
 app.mount(
     "/static",

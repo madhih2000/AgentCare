@@ -1,6 +1,11 @@
 import os
 
 os.environ.setdefault("GROQ_API_KEY", "test-key")
+# Tells backend.main's startup hook to skip its schema-create/seed check —
+# without this, TestClient's `with` block triggers the app's lifespan, which
+# would run against the real module-level SessionLocal (local data/agentcare.db
+# or whatever DATABASE_URL is set to), not the isolated in-memory engine below.
+os.environ.setdefault("APP_ENV", "test")
 
 import pytest
 from sqlalchemy import create_engine
