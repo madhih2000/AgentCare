@@ -85,21 +85,21 @@ graph TB
     Services --> DB
     Agents -->|persist trace & fields| DB
 
-    classDef client fill:#ecfeff,stroke:#0891b2,stroke-width:1.5px,color:#164e63;
-    classDef route fill:#e0f2fe,stroke:#0369a1,stroke-width:1.5px,color:#0c4a6e;
-    classDef service fill:#d1fae5,stroke:#059669,stroke-width:1.5px,color:#064e3b;
-    classDef util fill:#f1f5f9,stroke:#64748b,stroke-width:1.5px,color:#334155;
-    classDef agent fill:#fef3c7,stroke:#d97706,stroke-width:1.5px,color:#78350f;
-    classDef tool fill:#fce7f3,stroke:#db2777,stroke-width:1.5px,color:#831843;
-    classDef external fill:#ede9fe,stroke:#7c3aed,stroke-width:1.5px,color:#4c1d95;
+    classDef client fill:#ecfeff,stroke:#0891b2,stroke-width:1.5px,color:#164e63
+    classDef route fill:#e0f2fe,stroke:#0369a1,stroke-width:1.5px,color:#0c4a6e
+    classDef service fill:#d1fae5,stroke:#059669,stroke-width:1.5px,color:#064e3b
+    classDef util fill:#f1f5f9,stroke:#64748b,stroke-width:1.5px,color:#334155
+    classDef agent fill:#fef3c7,stroke:#d97706,stroke-width:1.5px,color:#78350f
+    classDef tool fill:#fce7f3,stroke:#db2777,stroke-width:1.5px,color:#831843
+    classDef external fill:#ede9fe,stroke:#7c3aed,stroke-width:1.5px,color:#4c1d95
 
-    class UI client;
-    class Routes route;
-    class Services service;
-    class Utils util;
-    class Agents agent;
-    class Tools tool;
-    class LLM,DB external;
+    class UI client
+    class Routes route
+    class Services service
+    class Utils util
+    class Agents agent
+    class Tools tool
+    class LLM,DB external
 ```
 
 **Request lifecycle for a patient request:**
@@ -280,19 +280,19 @@ erDiagram
         string entity_type
     }
 
-    classDef identity fill:#ecfeff,stroke:#0891b2,color:#164e63;
-    classDef clinical fill:#d1fae5,stroke:#059669,color:#064e3b;
-    classDef document fill:#fce7f3,stroke:#db2777,color:#831843;
-    classDef workflow fill:#fef3c7,stroke:#d97706,color:#78350f;
-    classDef escalation fill:#fee2e2,stroke:#dc2626,color:#7f1d1d;
-    classDef audit fill:#f1f5f9,stroke:#64748b,color:#334155;
+    classDef identity fill:#ecfeff,stroke:#0891b2,color:#164e63
+    classDef clinical fill:#d1fae5,stroke:#059669,color:#064e3b
+    classDef document fill:#fce7f3,stroke:#db2777,color:#831843
+    classDef workflow fill:#fef3c7,stroke:#d97706,color:#78350f
+    classDef escalation fill:#fee2e2,stroke:#dc2626,color:#7f1d1d
+    classDef audit fill:#f1f5f9,stroke:#64748b,color:#334155
 
-    class User,PatientProfile identity;
-    class Department,Doctor,AppointmentSlot,Appointment clinical;
-    class PatientDocument document;
-    class WorkflowRun,Reminder workflow;
-    class Escalation escalation;
-    class AuditEvent audit;
+    class User,PatientProfile identity
+    class Department,Doctor,AppointmentSlot,Appointment clinical
+    class PatientDocument document
+    class WorkflowRun,Reminder workflow
+    class Escalation escalation
+    class AuditEvent audit
 ```
 
 ## Getting started
