@@ -2,10 +2,11 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, String, Text, func
+from sqlalchemy import Boolean, Enum, ForeignKey, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.db.base import Base
+from backend.db.types import UTCDateTime
 
 
 class SlotStatus(str, enum.Enum):
@@ -49,8 +50,8 @@ class AppointmentSlot(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     doctor_id: Mapped[str] = mapped_column(ForeignKey("doctors.id"), nullable=False)
-    start_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    end_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    start_time: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    end_time: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
     status: Mapped[SlotStatus] = mapped_column(Enum(SlotStatus), default=SlotStatus.open)
 
     doctor: Mapped["Doctor"] = relationship(back_populates="slots")
@@ -66,9 +67,9 @@ class Appointment(Base):
     slot_id: Mapped[str] = mapped_column(ForeignKey("appointment_slots.id"), nullable=False)
     status: Mapped[AppointmentStatus] = mapped_column(Enum(AppointmentStatus), default=AppointmentStatus.booked)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+        UTCDateTime(), server_default=func.now(), onupdate=func.now()
     )
 
     slot: Mapped["AppointmentSlot"] = relationship(back_populates="appointment")

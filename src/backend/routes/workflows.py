@@ -32,6 +32,7 @@ def _execute_workflow(
     actor_id: str,
     request_text: str,
     initial_trace: list[dict] | None = None,
+    clarification_rounds: int = 0,
 ) -> None:
     try:
         run_workflow(
@@ -40,6 +41,7 @@ def _execute_workflow(
             actor_id=actor_id,
             request_text=request_text,
             initial_trace=initial_trace,
+            clarification_rounds=clarification_rounds,
         )
     except Exception:
         logger.exception("Background workflow %s failed", workflow_run_id)
@@ -111,6 +113,7 @@ def respond_to_clarification(
     trace = state.get("trace", [])
     question = state.get("clarification_question") or "your previous request"
     prior_request_text = state.get("request_text") or ""
+    clarification_rounds = state.get("clarification_rounds", 0)
     combined_text = (
         f"{prior_request_text}\n\nClarification question asked: {question}\n"
         f"Patient's answer: {payload.message}"
@@ -126,7 +129,9 @@ def respond_to_clarification(
         status=WorkflowStatus.in_progress,
     )
 
-    background_tasks.add_task(_execute_workflow, run.id, profile.id, user.id, combined_text, trace)
+    background_tasks.add_task(
+        _execute_workflow, run.id, profile.id, user.id, combined_text, trace, clarification_rounds
+    )
     return run
 
 

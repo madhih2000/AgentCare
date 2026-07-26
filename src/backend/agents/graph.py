@@ -22,11 +22,26 @@ def _route_after_precheck(state: WorkflowState) -> str:
 
 
 def _route_after_coordinator(state: WorkflowState) -> str:
+    # escalated: the coordinator hit MAX_CLARIFICATION_ROUNDS and gave up
+    # asking in favor of a human review — checked before needs_clarification
+    # since coordinator_node sets both escalated=True and
+    # needs_clarification=False together in that case.
+    if state.get("escalated"):
+        return "escalated"
     return "clarify" if state.get("needs_clarification") else "safety"
 
 
 def _route_after_safety(state: WorkflowState) -> str:
     return "escalated" if state.get("escalated") else "routing"
+
+
+def _route_after_appointment(state: WorkflowState) -> str:
+    # Same escalate-then-clarify branching as _route_after_coordinator — the
+    # Appointment Agent can also pause on a doctor-preference question or
+    # give up and escalate after MAX_CLARIFICATION_ROUNDS.
+    if state.get("escalated"):
+        return "escalated"
+    return "clarify" if state.get("needs_clarification") else "document"
 
 
 def _build_checkpointer():
@@ -75,11 +90,13 @@ def build_graph():
         "safety_precheck", _route_after_precheck, {"escalated": END, "coordinator": "coordinator"}
     )
     graph.add_conditional_edges(
-        "coordinator", _route_after_coordinator, {"clarify": END, "safety": "safety"}
+        "coordinator", _route_after_coordinator, {"clarify": END, "escalated": END, "safety": "safety"}
     )
     graph.add_conditional_edges("safety", _route_after_safety, {"escalated": END, "routing": "routing"})
     graph.add_edge("routing", "appointment")
-    graph.add_edge("appointment", "document")
+    graph.add_conditional_edges(
+        "appointment", _route_after_appointment, {"clarify": END, "escalated": END, "document": "document"}
+    )
     graph.add_edge("document", "followup")
     graph.add_edge("followup", END)
 
@@ -100,12 +117,16 @@ def run_workflow(
     actor_id: str,
     request_text: str,
     initial_trace: list[dict] | None = None,
+    clarification_rounds: int = 0,
 ) -> WorkflowState:
     """Runs the graph from its entry point (the deterministic safety precheck).
     `initial_trace` carries forward the trace already shown to the user when
-    this call resumes a workflow that was previously paused by the
-    coordinator's request_clarification tool — without it, resuming would
-    wipe the pipeline history the patient already saw."""
+    this call resumes a workflow that was previously paused by
+    request_clarification — without it, resuming would wipe the pipeline
+    history the patient already saw. `clarification_rounds` carries forward
+    how many clarification round-trips have already happened, so the
+    MAX_CLARIFICATION_ROUNDS cap in coordinator.py holds across resumes
+    instead of resetting to 0 every time."""
     graph = get_compiled_graph()
     initial_state: WorkflowState = {
         "workflow_run_id": workflow_run_id,
@@ -118,6 +139,7 @@ def run_workflow(
         "status": "in_progress",
         "needs_clarification": False,
         "clarification_question": None,
+        "clarification_rounds": clarification_rounds,
     }
     config = {"configurable": {"thread_id": workflow_run_id}}
     logger.info(

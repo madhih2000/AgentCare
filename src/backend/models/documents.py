@@ -1,10 +1,11 @@
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, ForeignKey, String, func
+from sqlalchemy import Date, ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.db.base import Base
+from backend.db.types import UTCDateTime
 
 
 class PatientDocument(Base):
@@ -19,4 +20,4 @@ class PatientDocument(Base):
     is_duplicate_of: Mapped[str | None] = mapped_column(
         ForeignKey("patient_documents.id"), nullable=True
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), server_default=func.now())

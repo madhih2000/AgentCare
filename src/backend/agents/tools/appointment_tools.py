@@ -37,6 +37,29 @@ def list_open_slots(doctor_id: str) -> list[dict]:
 
 
 @tool
+def list_patient_appointment_history(patient_id: str) -> list[dict]:
+    """List this patient's past and current appointments — doctor, department,
+    status, and slot time — most recent first. Check this before asking the
+    patient to choose between multiple available doctors: if they've already
+    seen one of them, prefer that doctor for continuity of care instead of
+    asking. Only ask if history doesn't clearly point to one."""
+    db = SessionLocal()
+    try:
+        return [
+            {
+                "doctor_id": appt.doctor_id,
+                "doctor_name": appt.doctor_name,
+                "department_name": appt.department_name,
+                "status": appt.status.value,
+                "slot_start": appt.slot_start.isoformat() if appt.slot_start else None,
+            }
+            for appt in appointment_service.list_patient_appointments(db, patient_id)
+        ]
+    finally:
+        db.close()
+
+
+@tool
 def book_appointment(patient_id: str, doctor_id: str, slot_id: str, reason: str, actor_id: str) -> dict:
     """Book an appointment for a patient with a doctor for a specific open slot.
     reason is the patient's stated reason for the visit. actor_id is the acting

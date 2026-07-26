@@ -5,6 +5,14 @@ from backend.db.session import SessionLocal
 from backend.models.workflow import WorkflowStatus
 from backend.services import workflow_service
 
+# Shared across every agent node that can pause via request_clarification
+# (Coordinator, Appointment). After this many unresolved round-trips, an
+# agent escalates to a human instead of asking again — see
+# coordinator.py/appointment_agent.py for the escalate-or-pause branching.
+# One shared counter/cap, not per-agent, so a workflow can't rack up 2 from
+# the Coordinator and then another 2 from the Appointment Agent.
+MAX_CLARIFICATION_ROUNDS = 2
+
 
 class WorkflowState(TypedDict, total=False):
     workflow_run_id: str
@@ -23,6 +31,7 @@ class WorkflowState(TypedDict, total=False):
     final_summary: Optional[str]
     needs_clarification: bool
     clarification_question: Optional[str]
+    clarification_rounds: int
 
 
 def persist_step(

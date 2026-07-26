@@ -222,10 +222,15 @@
     e.preventDefault();
     const doctorId = document.getElementById("slot-doctor").value;
     try {
+      // <input type="datetime-local"> gives a bare "2026-07-25T22:00" string
+      // with no timezone info. `new Date(...)` on that form is parsed as the
+      // browser's LOCAL time, so .toISOString() converts it to an explicit,
+      // unambiguous UTC instant before it goes over the wire — without this,
+      // the server has no way to know which timezone "22:00" was even in.
       await AgentCareAPI.post("/api/staff/slots", {
         doctor_id: doctorId,
-        start_time: document.getElementById("slot-start").value,
-        end_time: document.getElementById("slot-end").value,
+        start_time: new Date(document.getElementById("slot-start").value).toISOString(),
+        end_time: new Date(document.getElementById("slot-end").value).toISOString(),
       });
       AgentCareUI.toast("Slot added", "success");
       const calendarDoctorSelect = document.getElementById("calendar-doctor");

@@ -131,7 +131,9 @@ flowchart LR
 
     Routing["🧩 Department Routing Agent<br/>maps request to a real,<br/>active Department"] --> Appointment
 
-    Appointment["📅 Appointment Agent<br/>checks slots, books /<br/>reschedules / cancels"] --> Document
+    Appointment["📅 Appointment Agent<br/>checks slots, books /<br/>reschedules / cancels"]
+    Appointment -->|multiple doctors,<br/>no history match| Clarify
+    Appointment -->|booked / not applicable| Document
 
     Document["📄 Document Agent<br/>lists uploads, flags duplicates,<br/>computes missing documents"] --> Followup
 
@@ -153,7 +155,9 @@ flowchart LR
     style Done fill:#dcfce7,stroke:#16a34a,color:#14532d
 ```
 
-The deterministic pre-check is the graph's real entry point, ahead of any LLM call — including the Coordinator's — so an emergency request can never get diverted into a clarification question. If the Coordinator can't tell what the patient actually wants — which department, book vs. reschedule vs. cancel, which document — it calls the `request_clarification` tool instead of guessing. That routes the graph straight to `END` with `WorkflowRun.status = needs_clarification` and a `clarification_question` persisted in state; the SSE stream closes and the UI shows the question inline with a reply box. `POST /api/workflows/{id}/respond` appends the patient's answer to the original request, carries the trace already shown forward (so the pipeline UI doesn't reset), and re-invokes the graph from the top — through the pre-check again, then the Coordinator — repeating for as many turns as the Coordinator needs before it's confident enough to hand off to Safety & Escalation.
+The deterministic pre-check is the graph's real entry point, ahead of any LLM call — including the Coordinator's — so an emergency request can never get diverted into a clarification question. If the Coordinator can't tell what the patient actually wants — which department, book vs. reschedule vs. cancel, which document — it calls the `request_clarification` tool instead of guessing. That routes the graph straight to `END` with `WorkflowRun.status = needs_clarification` and a `clarification_question` persisted in state; the SSE stream closes and the UI shows the question inline with a reply box. `POST /api/workflows/{id}/respond` appends the patient's answer to the original request, carries the trace already shown forward (so the pipeline UI doesn't reset), and re-invokes the graph from the top — through the pre-check again, then the Coordinator.
+
+The Appointment Agent can pause the same way — e.g. a department with more than one doctor and nothing in the patient's history to prefer one. Both agents share one `clarification_rounds` counter and a `MAX_CLARIFICATION_ROUNDS` cap (2); once a workflow has asked that many unresolved questions in total, whichever agent is asking escalates to a human instead of asking again, rather than looping forever.
 
 Each agent has its **own system prompt** (`src/backend/prompts/`) and **own tool subset** (`src/backend/agents/tools/`) — no shared prompt, no relabeled helper functions. The compiled graph runs with a checkpointer (`MemorySaver` for dev, `SqliteSaver` for a persistent checkpoint log) selected via `LANGGRAPH_CHECKPOINTER`.
 
@@ -162,7 +166,7 @@ Each agent has its **own system prompt** (`src/backend/prompts/`) and **own tool
 | Coordinator | `agents/coordinator.py` | `get_patient_profile`, `log_agent_decision`, `request_clarification` |
 | Safety & Escalation | `agents/safety_agent.py` (precheck runs as the graph's entry point, before the Coordinator) | `create_escalation` (+ deterministic keyword rules in `utils/validators.py`) |
 | Department Routing | `agents/routing_agent.py` | `list_departments`, `select_department`, `classify_department` (fallback) |
-| Appointment | `agents/appointment_agent.py` | `list_doctors`, `list_open_slots`, `book_appointment`, `reschedule_appointment`, `cancel_appointment` |
+| Appointment | `agents/appointment_agent.py` | `list_doctors`, `list_open_slots`, `list_patient_appointment_history`, `book_appointment`, `reschedule_appointment`, `cancel_appointment`, `request_clarification` |
 | Document | `agents/document_agent.py` | `list_patient_documents`, `missing_documents` |
 | Follow-up | `agents/followup_agent.py` | `create_appointment_reminder`, `create_document_followup_reminder` |
 
@@ -179,6 +183,7 @@ Every tool is a thin `@langchain_core.tools.tool`-decorated wrapper in `src/back
 | `classify_department` | `department_tools.py` | Deterministic keyword-list fallback, used only if the LLM doesn't call `select_department` itself. Narrower than the LLM's own judgment by design — kept as a safety net, not the primary path. |
 | `list_doctors` | `appointment_tools.py` | Lists active doctors within a given department. |
 | `list_open_slots` | `appointment_tools.py` | Lists open, bookable appointment slots for a doctor, soonest first. |
+| `list_patient_appointment_history` | `appointment_tools.py` | Lists the patient's past/current appointments (doctor, department, status). Checked before asking about doctor preference — an existing relationship with a doctor is preferred over asking. |
 | `book_appointment` | `appointment_tools.py` | Books a patient into a specific open slot; fails with a clear error if the slot is no longer available. |
 | `reschedule_appointment` | `appointment_tools.py` | Moves an existing appointment to a new open slot, freeing the old one. |
 | `cancel_appointment` | `appointment_tools.py` | Cancels an appointment and frees its slot. |
@@ -454,6 +459,10 @@ They're kept separate on purpose: the database shape and the API shape are allow
 **The LLM makes the routing decision — a tool call just keeps it honest, not a keyword list.** An earlier version of the Routing Agent extracted `department_id` only from a deterministic keyword-matcher's result, ignoring the LLM's own (often correct) reasoning entirely — so "I need a cardio appointment" silently failed to route, even though the agent's own text said "Cardiology," because "cardio" wasn't in the fixed keyword list. The fix wasn't to grow the keyword list; it was to stop trusting it as the primary signal. The Routing Agent now calls `list_departments` for the real options, decides semantically, and calls `select_department(department_id)` — which is DB-validated (can't return a hallucinated id) but is a genuine LLM judgment call, not a substring match. `classify_department` (the old keyword matcher) stays only as a fallback for when the LLM doesn't call `select_department` at all. Same anti-hallucination guarantee as before, without throwing away what an LLM is actually good at.
 
 **Ask instead of guessing on ambiguous requests.** Routing or booking off a guessed intent is worse than asking — a wrong department or a cancelled-instead-of-rescheduled appointment erodes trust fast. The Coordinator can call `request_clarification` to pause the graph (`END` with `status=needs_clarification`) rather than pass a low-confidence guess down the pipeline; `POST /workflows/{id}/respond` folds the patient's answer back into the request and resumes from the top (through the safety pre-check again), carrying the existing trace forward so the UI reads as one continuous conversation instead of a reset. Because the pre-check always runs first, this loop can never become a way to stall or dodge an emergency escalation.
+
+**A round cap, not a confidence threshold, bounds the clarification loop.** Nothing stopped the Coordinator from asking a second, third, or infinite clarifying question if it stayed unsure — a real gap, since each round is a full LLM round-trip and a wait on the patient. The fix isn't a numeric confidence score (LLM self-reported confidence is poorly calibrated and hard to trust); it's a hard, observable limit. `agents/state.py::MAX_CLARIFICATION_ROUNDS` (2) is threaded through `state["clarification_rounds"]` across every `/respond` resume, and once exceeded, whichever agent is asking calls `create_escalation` itself instead of asking again — same human-review path the Safety Agent uses, reached by a different door. The cap is shared across agents (not one budget per agent) so a workflow can't rack up two rounds from the Coordinator and then another two from the Appointment Agent.
+
+**Clarification isn't only the Coordinator's — but it prefers history over asking.** The Appointment Agent can hit the same kind of ambiguity: a department with more than one doctor and no stated preference. It gets the same `request_clarification` tool the Coordinator has, wired through an identical pause/resume graph edge (`_route_after_appointment`) — but it's prompted to call `list_patient_appointment_history` *first* and prefer a doctor the patient has already seen (continuity of care) before ever asking. Time-slot choice is deliberately never surfaced this way — picking one of a dozen open slots isn't a meaningful decision worth interrupting a booking for, so the agent just takes the soonest one unless the patient's request already named a day/time that's available.
 
 **SSE over client-side polling.** The background workflow already writes its progress to the `WorkflowRun` row after every agent step. Rather than have the browser poll `GET /api/workflows/{id}` on a timer, the stream endpoint does that polling server-side (every 400ms) and pushes only new trace entries over a single long-lived connection — fewer round trips, and the frontend renders each agent's stage as it lands instead of in one batch at the end.
 
